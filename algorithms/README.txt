@@ -2,6 +2,11 @@ Thu muc algorithms
 
 Dat code thuat toan o day.
 
+Da co cho man 1:
+- bfs.py: BFS tim duong giao du 4 mon.
+- dfs.py: DFS tim duong giao du 4 mon.
+- search_common.py: tao trang thai va sinh cac buoc di ke tiep.
+
 Du kien:
 - uninformed.py: BFS, DFS
 - informed.py: Greedy, A*
