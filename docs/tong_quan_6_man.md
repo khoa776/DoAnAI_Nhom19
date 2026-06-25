@@ -22,10 +22,12 @@ Moi man thay doi dieu kien de phu hop voi mot nhom thuat toan AI.
 ## Man 3 - Local Search
 
 - Thuat toan: Simple Hill Climbing, Simulated Annealing
-- Noi dung: dat tram sac phu sao cho robot giao hang hieu qua hon.
-- State: vi tri cac tram sac.
-- Neighbor: di chuyen mot tram sac len/xuong/trai/phai.
-- Score: so don giao duoc hoac tong quang duong cang nho cang tot.
+- Noi dung: robot giao 1 mon trong map nho co bay cuc bo, ho den va laser.
+- State: vi tri hien tai cua robot.
+- Neighbor: cac o di duoc len/xuong/trai/phai.
+- Ham danh gia: khoang cach Manhattan toi dich, cang nho cang tot.
+- Simple Hill Climbing dung khi khong co o ke nao lam Manhattan nho hon.
+- Simulated Annealing doi khi chap nhan buoc co Manhattan lon hon de thoat bay.
 
 ## Man 4 - Moi Truong Phuc Tap
 

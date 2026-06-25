@@ -12,6 +12,10 @@ Da co cho man 2:
 - astar.py: A*, chon node co f(n) = g(n) + h(n) nho nhat.
 - informed_common.py: tao trang thai co pin, tinh heuristic va sinh node con.
 
+Da co cho man 3:
+- local_search.py: Simple Hill Climbing va Simulated Annealing tren map local search.
+- Ham danh gia dung khoang cach Manhattan toi diem giao hang.
+
 Du kien:
 - uninformed.py: BFS, DFS
 - informed.py: Greedy, A*

@@ -1,7 +1,27 @@
-from config import MAP_X, MAP_Y, TILE
+from config import MAP_X, MAP_Y, PANEL_X, TILE
 
 # F = floor, X = box, W = wall, . = hole/empty/void.
 BATTERY_MAX_STAGE2 = 30
+
+LOCAL_MAP = {
+    "name": "Bay cuc bo",
+    "grid": [
+        "WWWWWWWWWWWWWWWWW",
+        "WFFFFFFFFFFFFXXGW",
+        "WFX.XXXFXFXXFFXFW",
+        "WFFFFFXFFFFXFXFFW",
+        "WFFX.XXXFXFXXFFFW",
+        "WFFFFXFFFXFFFFFFW",
+        "WFXFXXFX.FXFFXFFW",
+        "WFFFFFFFFFFFFFFFW",
+        "WFFFXFFFFFXFFXFFW",
+        "WSFFFFFFFXFFFFFFW",
+        "WWWWWWWWWWWWWWWWW",
+    ],
+    "start": (9, 1),
+    "goal": (1, 15),
+    "lasers": [((5, 5), (5, 9)), ((8, 4), (8, 10))],
+}
 
 MAPS = [
     {
@@ -21,6 +41,7 @@ MAPS = [
         ],
         "start": [2, 2],
         "chargers": [(2, 14), (8, 5), (8, 15)],
+        "stage3_start": [(1, 1), (9, 18)],
         "cost2": [(1, 8), (1, 9), (2, 8), (4, 8), (6, 9), (7, 14), (9, 14)],
         "delivery": [
             ("A", (1, 3), "medicine"),
@@ -47,6 +68,7 @@ MAPS = [
         ],
         "start": [8, 2],
         "chargers": [(1, 10), (5, 15), (9, 5)],
+        "stage3_start": [(1, 1), (9, 18)],
         "cost2": [(1, 7), (2, 8), (3, 9), (5, 4), (6, 14), (8, 10), (9, 13)],
         "delivery": [
             ("A", (1, 4), "medicine"),
@@ -73,6 +95,7 @@ MAPS = [
         ],
         "start": [1, 10],
         "chargers": [(2, 5), (6, 15), (9, 9)],
+        "stage3_start": [(1, 1), (9, 18)],
         "cost2": [(1, 6), (1, 7), (4, 5), (4, 14), (6, 8), (6, 9), (9, 12)],
         "delivery": [
             ("A", (1, 2), "medicine"),
@@ -103,6 +126,8 @@ def make_laser_cells(laser_lines):
 
 for game_map in MAPS:
     game_map["laser_cells"] = make_laser_cells(game_map["lasers"])
+
+LOCAL_MAP["laser_cells"] = make_laser_cells(LOCAL_MAP["lasers"])
 
 
 def get_map(index):
@@ -144,3 +169,23 @@ def tile_cost(game_map, row, col):
 
 def is_laser(game_map, row, col):
     return (row, col) in game_map["laser_cells"]
+
+
+def local_grid_to_screen(row, col):
+    cols = len(LOCAL_MAP["grid"][0])
+    start_x = (PANEL_X - cols * TILE) // 2
+    return start_x + col * TILE, MAP_Y + row * TILE
+
+
+def is_local_walkable(row, col):
+    grid = LOCAL_MAP["grid"]
+
+    if row < 0 or row >= len(grid):
+        return False
+    if col < 0 or col >= len(grid[0]):
+        return False
+
+    if (row, col) in LOCAL_MAP["laser_cells"]:
+        return False
+
+    return grid[row][col] != "W" and grid[row][col] != "X" and grid[row][col] != "."

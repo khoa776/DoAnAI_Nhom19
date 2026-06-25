@@ -21,6 +21,35 @@ def find_in_frontier(frontier, state):
     return None
 
 
+def state_base(state):
+    row, col, battery, delivered = state
+    return (row, col, delivered)
+
+
+def is_weaker_record(records, base, battery, cost):
+    if base not in records:
+        return False
+
+    for old_battery, old_cost in records[base]:
+        if old_battery >= battery and old_cost <= cost:
+            return True
+
+    return False
+
+
+def save_record(records, base, battery, cost):
+    old_list = records.get(base, [])
+    new_list = []
+
+    for old_battery, old_cost in old_list:
+        if battery >= old_battery and cost <= old_cost:
+            continue
+        new_list.append((old_battery, old_cost))
+
+    new_list.append((battery, cost))
+    records[base] = new_list
+
+
 def astar_search(game_map, robot_pos, battery, delivered):
     goal_labels = get_all_labels(game_map)
     start_state = make_start_state(game_map, robot_pos, battery, delivered)
@@ -36,20 +65,30 @@ def astar_search(game_map, robot_pos, battery, delivered):
 
     frontier = [start_node]
     reached = {}
+    best_records = {}
     nodes = 0
 
     while frontier:
         current = choose_min_f(frontier)
         state = current["state"]
+        base = state_base(state)
+
+        if is_weaker_record(best_records, base, state[2], current["g"]):
+            continue
 
         if is_goal(state, goal_labels):
             return current["path"], nodes, current["g"]
 
         reached[state] = current["g"]
+        save_record(best_records, base, state[2], current["g"])
 
         for new_state, step_cost in expand_state(game_map, state):
             nodes += 1
             new_g = current["g"] + step_cost
+            new_base = state_base(new_state)
+
+            if is_weaker_record(best_records, new_base, new_state[2], new_g):
+                continue
 
             if new_state in reached:
                 if new_g >= reached[new_state]:

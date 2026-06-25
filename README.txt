@@ -11,12 +11,13 @@ Noi dung:
 - Co nut RESET tren panel de dua robot ve ban dau.
 - Panel co chon thuat toan BFS/DFS, nut CHAY AI, vi tri, duong da di, ket qua va danh sach hang can giao.
 - Nut DOI MAP dung de chuyen qua map tiep theo, robot se reset ve diem bat dau cua map moi.
-- Nut DOI MAN dung de chuyen giua man 1 va man 2.
+- Nut DOI MAN dung de chuyen giua man 1, man 2 va man 3.
 - Nut QUA MAN va cac o chuc nang dang de san, se gan chuc nang sau.
 - Co 4 diem giao hang A/B/C/D nam gan ria map: thuoc, may tinh, oc vit, chip.
 - Vat can gom hop X, ho den dang o trong va tia laser giua hai hop cung hang/cot.
 - Man 1 da gan BFS va DFS de tim duong giao du 4 mon, khong dung pin.
 - Man 2 da co giao dien pin, tram sac va cac o vang ton 2 pin.
+- Man 3 dung Hill Climbing/Simulated Annealing tren map nho co ho va laser, danh gia bang Manhattan.
 - Khi ket thuc se hien ket qua Hoan thanh hoac That bai tren bang dieu khien.
 - Co nhac nen sci-fi, duoc bat trong audio\sound_manager.py.
 
