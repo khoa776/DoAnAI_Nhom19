@@ -7,6 +7,11 @@ Da co cho man 1:
 - dfs.py: DFS tim duong giao du 4 mon.
 - search_common.py: tao trang thai va sinh cac buoc di ke tiep.
 
+Da co cho man 2:
+- greedy.py: Greedy Best-First Search, chon node co h(n) nho nhat.
+- astar.py: A*, chon node co f(n) = g(n) + h(n) nho nhat.
+- informed_common.py: tao trang thai co pin, tinh heuristic va sinh node con.
+
 Du kien:
 - uninformed.py: BFS, DFS
 - informed.py: Greedy, A*

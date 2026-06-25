@@ -4,18 +4,38 @@ import sys
 
 import pygame
 
+from algorithms.astar import astar_search
+from algorithms.bfs import bfs
+from algorithms.dfs import dfs
+from algorithms.greedy import greedy_search
+from algorithms.search_common import get_delivery_at
 from config import COLORS, FPS, HEIGHT, MAP_X, MAP_Y, PANEL_W, PANEL_X, TILE, WIDTH
-from data.maps import BATTERY_MAX, CHARGERS, DELIVERY_POINTS, LAB_MAP, LASER_LINES, START_POS, grid_to_screen, is_charger, is_walkable
+from data.maps import BATTERY_MAX_STAGE2, get_map, grid_to_screen, is_charger, is_cost2, is_walkable, map_count, tile_cost
 from ui.drawing import draw_center, draw_text, wrap_text
 from ui.sprites import draw_battery_bar, draw_charger
 
 pygame.init()
 
 FONT = pygame.font.SysFont("segoeui", 18)
+FONT_XS = pygame.font.SysFont("segoeui", 13)
 FONT_SM = pygame.font.SysFont("segoeui", 15)
 FONT_BADGE = pygame.font.SysFont("segoeui", 14, bold=True)
 FONT_MD = pygame.font.SysFont("segoeui", 24, bold=True)
 FONT_LG = pygame.font.SysFont("segoeui", 34, bold=True)
+
+ITEM_NAMES = {
+    "medicine": "Thuoc",
+    "computer": "May tinh",
+    "bolt": "Oc vit",
+    "core": "Chip",
+}
+
+ITEM_COLORS = {
+    "medicine": (245, 92, 116),
+    "computer": (98, 207, 255),
+    "bolt": (238, 202, 98),
+    "core": (178, 123, 255),
+}
 
 
 class Button:
@@ -56,11 +76,21 @@ class Game:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("DoAnAI - Sci-fi Grid Prototype")
         self.clock = pygame.time.Clock()
-        self.robot = START_POS[:]
+        self.stage = 1
+        self.map_index = 0
+        self.current_map = get_map(self.map_index)
+        self.robot = self.current_map["start"][:]
         self.facing = "down"
-        self.battery = BATTERY_MAX
         self.algorithm = "BFS"
-        self.path = [tuple(START_POS)]
+        self.battery = BATTERY_MAX_STAGE2
+        self.energy_used = 0
+        self.path = [tuple(self.current_map["start"])]
+        self.delivered = set()
+        self.auto_path = []
+        self.auto_wait = 0
+        self.nodes_checked = 0
+        self.solution_steps = 0
+        self.result_message = "Chua chay"
         self.message = "Dung phim mui ten de di chuyen robot."
         self.buttons = []
         self.make_buttons()
@@ -71,11 +101,16 @@ class Game:
         bw = 118
         bh = 36
         gap = 10
-        algorithms = ["BFS", "DFS", "IDS", "UCS"]
+        if self.stage == 1:
+            algorithms = ["BFS", "DFS"]
+        else:
+            algorithms = ["GREEDY", "A*"]
         self.algo_buttons = []
         self.buttons = [
-            Button((left, 344, 118, 38), "RESET", self.reset_game, FONT),
-            Button((left + 128, 344, 118, 38), "QUA MAN", self.next_stage, FONT),
+            Button((left, 290, 118, 38), "RESET", self.reset_game, FONT),
+            Button((left + 128, 290, 118, 38), "CHAY AI", self.run_algorithm, FONT),
+            Button((left, 338, 118, 38), "DOI MAP", self.change_map, FONT),
+            Button((left + 128, 338, 118, 38), "DOI MAN", self.change_stage, FONT),
         ]
         for i, name in enumerate(algorithms):
             x = left + (i % 2) * (bw + gap)
@@ -85,18 +120,151 @@ class Game:
             self.buttons.append(button)
 
     def reset_game(self):
-        self.robot = START_POS[:]
+        self.robot = self.current_map["start"][:]
         self.facing = "down"
-        self.battery = BATTERY_MAX
-        self.path = [tuple(START_POS)]
+        self.battery = BATTERY_MAX_STAGE2
+        self.energy_used = 0
+        self.path = [tuple(self.current_map["start"])]
+        self.delivered = set()
+        self.auto_path = []
+        self.auto_wait = 0
+        self.nodes_checked = 0
+        self.solution_steps = 0
+        self.result_message = "Chua chay"
         self.message = "Da reset man choi ve trang thai ban dau."
 
     def select_algorithm(self, name):
         self.algorithm = name
-        self.message = f"Da chon thuat toan {name}. Phan xu ly se them sau."
+        self.message = f"Da chon thuat toan {name}."
 
-    def next_stage(self):
-        self.message = "Nut qua man dang de san, se gan chuc nang sau."
+    def run_algorithm(self):
+        if self.stage == 2:
+            self.auto_path = []
+            start_pos = tuple(self.robot)
+
+            if self.algorithm == "GREEDY":
+                path, nodes, cost = greedy_search(self.current_map, start_pos, self.battery, self.delivered)
+            else:
+                path, nodes, cost = astar_search(self.current_map, start_pos, self.battery, self.delivered)
+
+            self.nodes_checked = nodes
+
+            if path is None:
+                self.solution_steps = 0
+                self.result_message = "That bai"
+                self.message = f"{self.algorithm} khong tim thay duong voi luong pin hien tai."
+            else:
+                self.solution_steps = len(path) - 1
+                self.auto_path = path[1:]
+                self.path = [start_pos]
+                self.auto_wait = 0
+
+                if self.solution_steps == 0:
+                    self.result_message = "Hoan thanh"
+                    self.message = "Tat ca don hang da duoc giao."
+                else:
+                    self.result_message = "Dang chay"
+                    self.message = f"{self.algorithm} tim thay duong {self.solution_steps} buoc, du kien ton {cost} pin."
+            return
+
+        self.auto_path = []
+        start_pos = tuple(self.robot)
+
+        if self.algorithm == "BFS":
+            path, nodes = bfs(self.current_map, start_pos, self.delivered)
+        else:
+            path, nodes = dfs(self.current_map, start_pos, self.delivered)
+
+        self.nodes_checked = nodes
+
+        if path is None:
+            self.solution_steps = 0
+            self.result_message = "That bai"
+            self.message = f"{self.algorithm} khong tim thay duong giao hang."
+        else:
+            self.solution_steps = len(path) - 1
+            self.auto_path = path[1:]
+            self.path = [start_pos]
+            self.auto_wait = 0
+            self.result_message = "Dang chay"
+            self.message = f"{self.algorithm} tim thay duong {self.solution_steps} buoc, xet {nodes} node."
+
+    def change_map(self):
+        self.map_index = (self.map_index + 1) % map_count()
+        self.current_map = get_map(self.map_index)
+        self.reset_game()
+        self.message = f"Da doi sang map {self.map_index + 1}: {self.current_map['name']}."
+
+    def change_stage(self):
+        if self.stage == 1:
+            self.stage = 2
+            self.algorithm = "GREEDY"
+            message = "Da chuyen sang man 2: co pin va o ton 2 pin."
+        else:
+            self.stage = 1
+            self.algorithm = "BFS"
+            message = "Da quay ve man 1: BFS/DFS khong dung pin."
+
+        self.make_buttons()
+        self.reset_game()
+        self.message = message
+
+    def update_delivery(self, row, col):
+        label = get_delivery_at(self.current_map, row, col)
+        if label and label not in self.delivered:
+            self.delivered.add(label)
+            self.message = f"Da giao mon {label} tai o ({row}, {col})."
+            if len(self.delivered) == len(self.current_map["delivery"]):
+                self.result_message = "Hoan thanh"
+                self.message = "Hoan thanh giao tat ca don hang."
+
+    def step_to(self, row, col):
+        old_row, old_col = self.robot
+        if row < old_row:
+            self.facing = "up"
+        elif row > old_row:
+            self.facing = "down"
+        elif col < old_col:
+            self.facing = "left"
+        elif col > old_col:
+            self.facing = "right"
+
+        self.robot = [row, col]
+        self.path.append((row, col))
+        if self.stage == 2:
+            cost = tile_cost(self.current_map, row, col)
+            self.battery -= cost
+            self.energy_used += cost
+
+            if is_charger(self.current_map, row, col):
+                self.battery = BATTERY_MAX_STAGE2
+                self.message = f"Robot den tram sac ({row}, {col}), pin da day lai."
+            else:
+                self.message = f"Robot di chuyen toi o ({row}, {col}), ton {cost} pin."
+        else:
+            self.message = f"Robot di chuyen toi o ({row}, {col})."
+
+        self.update_delivery(row, col)
+
+    def update_auto_move(self):
+        if not self.auto_path:
+            return
+
+        self.auto_wait += 1
+        if self.auto_wait < 12:
+            return
+
+        self.auto_wait = 0
+        row, col = self.auto_path.pop(0)
+        self.step_to(row, col)
+
+        if not self.auto_path:
+            if len(self.delivered) == len(self.current_map["delivery"]):
+                self.result_message = "Hoan thanh"
+                self.message = f"Hoan thanh giao hang bang {self.algorithm}."
+            else:
+                self.result_message = "That bai"
+                self.message = f"Robot da di het duong {self.algorithm} nhung chua giao du hang."
 
     def move(self, dr, dc):
         if dr < 0:
@@ -110,19 +278,16 @@ class Game:
 
         nr = self.robot[0] + dr
         nc = self.robot[1] + dc
-        if self.battery <= 0:
-            self.message = "Robot da het pin, can den tram sac."
-            return
 
-        if is_walkable(nr, nc):
-            self.robot = [nr, nc]
-            self.path.append((nr, nc))
-            self.battery = max(0, self.battery - 1)
-            if is_charger(nr, nc):
-                self.battery = BATTERY_MAX
-                self.message = f"Robot den tram sac ({nr}, {nc}) va sac day pin."
-            else:
-                self.message = f"Robot di chuyen toi o ({nr}, {nc}), ton 1 pin."
+        if is_walkable(self.current_map, nr, nc):
+            if self.stage == 2:
+                cost = tile_cost(self.current_map, nr, nc)
+                if self.battery < cost:
+                    self.message = "Pin khong du de di tiep, can tim tram sac."
+                    return
+
+            self.auto_path = []
+            self.step_to(nr, nc)
         else:
             self.message = "Khong the di vao tuong, hop, ho, laser hoac vung trong."
 
@@ -150,6 +315,7 @@ class Game:
         while True:
             self.clock.tick(FPS)
             self.handle_events()
+            self.update_auto_move()
             self.draw()
             pygame.display.flip()
 
@@ -158,6 +324,7 @@ class Game:
         self.draw_background_pattern()
         self.draw_title()
         self.draw_map()
+        self.draw_path()
         self.draw_robot()
         self.draw_panel()
 
@@ -187,40 +354,56 @@ class Game:
                 pygame.draw.line(self.screen, color, (x, y - 4), (x, y + 4), 1)
 
     def draw_title(self):
-        draw_text(self.screen, "DoAnAI Lab Map", FONT_LG, COLORS["text"], (54, 28))
-        draw_text(self.screen, "Map ma tran rong hon, giao dien gon hon, dieu khien robot thu cong", FONT, COLORS["muted"], (56, 66))
+        if self.stage == 1:
+            title = "Man 1 - Tim Kiem Khong Thong Tin"
+            note = "BFS/DFS giao hang tren map khong co chi phi va khong dung pin"
+        else:
+            title = "Man 2 - Tuyen Duong Nang Luong"
+            note = "Map co o ton 2 pin, tram sac va thanh pin cho Greedy/A*"
+        draw_text(self.screen, title, FONT_LG, COLORS["text"], (54, 28))
+        draw_text(self.screen, note, FONT, COLORS["muted"], (56, 66))
 
     def draw_map(self):
-        rows = len(LAB_MAP)
-        cols = len(LAB_MAP[0])
+        grid = self.current_map["grid"]
+        rows = len(grid)
+        cols = len(grid[0])
         outer = pygame.Rect(MAP_X - 14, MAP_Y - 14, cols * TILE + 28, rows * TILE + 28)
         pygame.draw.rect(self.screen, (2, 3, 6), outer.move(0, 8), border_radius=6)
         pygame.draw.rect(self.screen, (26, 31, 43), outer, border_radius=6)
         pygame.draw.rect(self.screen, (85, 96, 116), outer, 2, border_radius=6)
 
-        for r, row in enumerate(LAB_MAP):
+        for r, row in enumerate(grid):
             for c, tile in enumerate(row):
                 if tile == ".":
                     continue
                 rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
-                self.draw_tile(rect, tile)
+                self.draw_tile(rect, tile, r, c)
 
-        for start, end in LASER_LINES:
+        for start, end in self.current_map["lasers"]:
             self.draw_laser(start, end)
 
-        for index, (r, c) in enumerate(CHARGERS, start=1):
+        for index, (r, c) in enumerate(self.current_map["chargers"], start=1):
             rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
             draw_charger(self.screen, rect, f"C{index}", COLORS, FONT_SM)
 
-        for label, (r, c), kind in DELIVERY_POINTS:
+        for label, (r, c), kind in self.current_map["delivery"]:
             rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
             self.draw_delivery_point(rect, label, kind)
 
-    def draw_tile(self, rect, tile):
+    def draw_path(self):
+        for index, (r, c) in enumerate(self.path[:-1]):
+            x, y = grid_to_screen(r, c)
+            center = (x + TILE // 2, y + TILE // 2)
+            pygame.draw.circle(self.screen, (47, 214, 190), center, 5)
+            pygame.draw.circle(self.screen, (5, 12, 18), center, 5, 1)
+
+    def draw_tile(self, rect, tile, row, col):
         if tile == "W":
             self.draw_wall(rect)
         elif tile == "X":
             self.draw_obstacle(rect)
+        elif self.stage == 2 and is_cost2(self.current_map, row, col):
+            self.draw_cost_floor(rect)
         else:
             self.draw_floor(rect)
 
@@ -237,6 +420,15 @@ class Game:
         pygame.draw.rect(self.screen, COLORS["floor"], rect)
         pygame.draw.rect(self.screen, COLORS["floor_light"], (rect.x + 5, rect.y + 5, rect.w - 10, rect.h - 10), 1)
         pygame.draw.line(self.screen, (130, 150, 170), (rect.x + 8, rect.y + 10), (rect.right - 8, rect.bottom - 10), 1)
+
+    def draw_cost_floor(self, rect):
+        pygame.draw.rect(self.screen, (132, 119, 91), rect)
+        pygame.draw.rect(self.screen, (238, 202, 98), (rect.x + 5, rect.y + 5, rect.w - 10, rect.h - 10), 2)
+        pygame.draw.line(self.screen, (210, 180, 105), (rect.x + 8, rect.y + 10), (rect.right - 8, rect.bottom - 10), 1)
+        badge = pygame.Rect(rect.right - 20, rect.y + 5, 15, 15)
+        pygame.draw.rect(self.screen, (41, 35, 24), badge, border_radius=4)
+        pygame.draw.rect(self.screen, (238, 202, 98), badge, 1, border_radius=4)
+        draw_center(self.screen, "2", FONT_XS, COLORS["text"], badge)
 
     def draw_wall(self, rect):
         pygame.draw.rect(self.screen, COLORS["wall"], rect)
@@ -403,11 +595,12 @@ class Game:
         pygame.draw.rect(self.screen, COLORS["panel"], panel, border_radius=14)
         pygame.draw.rect(self.screen, (80, 95, 120), panel, 2, border_radius=14)
         draw_text(self.screen, "Bang dieu khien", FONT_MD, COLORS["text"], (panel.x + 24, panel.y + 24))
-        draw_text(self.screen, "Man 1 - Tim kiem khong co thong tin", FONT_SM, COLORS["muted"], (panel.x + 24, panel.y + 58))
+        map_line = f"Man {self.stage} | Map {self.map_index + 1}/{map_count()} - {self.current_map['name']}"
+        draw_text(self.screen, map_line, FONT_SM, COLORS["muted"], (panel.x + 24, panel.y + 58))
 
         info = [
             f"Thuat toan dang chon: {self.algorithm}",
-            "Chuc nang AI: de sau",
+            f"Node da xet: {self.nodes_checked}",
         ]
         y = panel.y + 92
         for line in info:
@@ -421,33 +614,59 @@ class Game:
             selected = button in self.algo_buttons and button.label == self.algorithm
             button.draw(self.screen, mouse, selected)
 
-        draw_text(self.screen, "Pin", FONT_SM, COLORS["muted"], (panel.x + 24, panel.y + 300))
-        draw_battery_bar(self.screen, panel.x + 62, panel.y + 296, 150, 24, self.battery, BATTERY_MAX, COLORS, FONT_SM)
-
-        status_box = pygame.Rect(panel.x + 24, panel.y + 338, panel.w - 48, 82)
+        status_box = pygame.Rect(panel.x + 24, panel.y + 300, panel.w - 48, 112)
         pygame.draw.rect(self.screen, COLORS["panel_2"], status_box, border_radius=10)
         pygame.draw.rect(self.screen, (80, 95, 120), status_box, 1, border_radius=10)
-        status = [
-            f"Vi tri: ({self.robot[0]}, {self.robot[1]})",
-            f"Duong da di: {max(0, len(self.path) - 1)} buoc",
-            f"Giao hang: {len(DELIVERY_POINTS)} diem",
-        ]
-        for i, line in enumerate(status):
-            draw_text(self.screen, line, FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 10 + i * 21))
+        if self.stage == 2:
+            draw_text(self.screen, f"Vi tri: ({self.robot[0]}, {self.robot[1]})", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
+            draw_text(self.screen, "Pin", FONT_SM, COLORS["muted"], (status_box.x + 10, status_box.y + 32))
+            draw_battery_bar(
+                self.screen,
+                status_box.x + 48,
+                status_box.y + 29,
+                150,
+                22,
+                self.battery,
+                BATTERY_MAX_STAGE2,
+                COLORS,
+                FONT_XS,
+            )
+            draw_text(self.screen, f"Pin da tieu: {self.energy_used}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 56))
+            draw_text(self.screen, f"Da giao: {len(self.delivered)}/{len(self.current_map['delivery'])}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 76))
+            draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
+        else:
+            status = [
+                f"Vi tri: ({self.robot[0]}, {self.robot[1]})",
+                f"Duong da di: {max(0, len(self.path) - 1)} buoc",
+                f"Da giao: {len(self.delivered)}/{len(self.current_map['delivery'])}",
+                f"Ket qua: {self.result_message}",
+            ]
+            for i, line in enumerate(status):
+                draw_text(self.screen, line, FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 12 + i * 22))
 
-        path_box = pygame.Rect(panel.x + 24, panel.y + 430, panel.w - 48, 70)
+        path_box = pygame.Rect(panel.x + 24, panel.y + 422, panel.w - 48, 58)
         pygame.draw.rect(self.screen, COLORS["panel_2"], path_box, border_radius=10)
         pygame.draw.rect(self.screen, (80, 95, 120), path_box, 1, border_radius=10)
-        recent = self.path[-5:]
+        recent = self.path[-4:]
         recent_text = " -> ".join([f"({r},{c})" for r, c in recent])
         draw_text(self.screen, "Cac o vua di:", FONT_SM, COLORS["muted"], (path_box.x + 10, path_box.y + 8))
         for i, line in enumerate(wrap_text(recent_text, FONT_SM, path_box.w - 20)[:2]):
-            draw_text(self.screen, line, FONT_SM, COLORS["text"], (path_box.x + 10, path_box.y + 31 + i * 19))
+            draw_text(self.screen, line, FONT_SM, COLORS["text"], (path_box.x + 10, path_box.y + 28 + i * 18))
 
-        todo_box = pygame.Rect(panel.x + 24, panel.y + 504, panel.w - 48, 38)
-        pygame.draw.rect(self.screen, (24, 30, 40), todo_box, border_radius=10)
-        pygame.draw.rect(self.screen, (65, 76, 96), todo_box, 1, border_radius=10)
-        draw_center(self.screen, "O chuc nang: de sau", FONT_SM, COLORS["muted"], todo_box)
+        delivery_box = pygame.Rect(panel.x + 24, panel.y + 488, panel.w - 48, 56)
+        pygame.draw.rect(self.screen, COLORS["panel_2"], delivery_box, border_radius=10)
+        pygame.draw.rect(self.screen, (80, 95, 120), delivery_box, 1, border_radius=10)
+        draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
+
+        for i, (label, pos, kind) in enumerate(self.current_map["delivery"]):
+            x = delivery_box.x + 10 + (i % 2) * 118
+            y = delivery_box.y + 26 + (i // 2) * 15
+            color = ITEM_COLORS.get(kind, COLORS["cyan"])
+            name = ITEM_NAMES.get(kind, kind)
+            if label in self.delivered:
+                name = name + " OK"
+            pygame.draw.rect(self.screen, color, (x, y + 3, 9, 9), border_radius=2)
+            draw_text(self.screen, f"{label}: {name}", FONT_XS, COLORS["text"], (x + 14, y))
 
         log_box = pygame.Rect(panel.x + 24, panel.bottom - 78, panel.w - 48, 58)
         pygame.draw.rect(self.screen, COLORS["panel_2"], log_box, border_radius=10)

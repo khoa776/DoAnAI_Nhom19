@@ -5,24 +5,28 @@ Cach chay:
   py -3 main.py
 
 Noi dung:
-- Map ma tran phong thi nghiem/sci-fi kich thuoc 11 x 20.
+- Co 3 map ma tran phong thi nghiem/sci-fi, moi map kich thuoc 11 x 20.
 - Giao dien gon hon, panel dieu khien nam rieng ben phai.
 - Robot co the di chuyen bang phim mui ten.
-- Robot co pin, moi buoc di ton 1 pin.
-- Khi robot di vao tram sac C1/C2/C3 thi pin duoc sac day lai.
-- Co nut RESET tren panel de dua robot va pin ve ban dau.
-- Panel co chon thuat toan BFS/DFS/IDS/UCS, hien pin, vi tri va duong da di.
+- Co nut RESET tren panel de dua robot ve ban dau.
+- Panel co chon thuat toan BFS/DFS, nut CHAY AI, vi tri, duong da di, ket qua va danh sach hang can giao.
+- Nut DOI MAP dung de chuyen qua map tiep theo, robot se reset ve diem bat dau cua map moi.
+- Nut DOI MAN dung de chuyen giua man 1 va man 2.
 - Nut QUA MAN va cac o chuc nang dang de san, se gan chuc nang sau.
-- Co 4 diem giao hang A/B/C/D nam gan ria map: thuoc, may tinh, oc vit, loi nang luong.
+- Co 4 diem giao hang A/B/C/D nam gan ria map: thuoc, may tinh, oc vit, chip.
 - Vat can gom hop X, ho den dang o trong va tia laser giua hai hop cung hang/cot.
-- Chua gan thuat toan AI, chi la prototype do hoa va dieu khien co ban.
+- Man 1 da gan BFS va DFS de tim duong giao du 4 mon, khong dung pin.
+- Man 2 da co giao dien pin, tram sac va cac o vang ton 2 pin.
+- Khi ket thuc se hien ket qua Hoan thanh hoac That bai tren bang dieu khien.
+- Co nhac nen sci-fi, duoc bat trong audio\sound_manager.py.
 
 File nen mo khi giai thich:
 - docs\tong_quan_6_man.md: tom tat y tuong 6 man.
 - docs\cau_truc_project.md: giai thich cau truc folder.
 - data\maps.py: ma tran ban do.
 - screens\manual_map.py: man hinh ve map va robot.
-- ui\sprites.py: ve robot phu tro, pin va tram sac.
+- audio\sound_manager.py: mo nhac nen cho game.
+- ui\sprites.py: ve robot phu tro va tram sac.
 
 Ky hieu trong code:
 - F: san kim loai
