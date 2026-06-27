@@ -843,9 +843,10 @@ class Game:
         for start, end in self.current_map["lasers"]:
             self.draw_laser(start, end)
 
-        for index, (r, c) in enumerate(self.current_map["chargers"], start=1):
-            rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
-            draw_charger(self.screen, rect, f"C{index}", COLORS, FONT_SM)
+        if self.stage == 2:
+            for index, (r, c) in enumerate(self.current_map["chargers"], start=1):
+                rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+                draw_charger(self.screen, rect, f"C{index}", COLORS, FONT_SM)
 
         for label, (r, c), kind in self.current_map["delivery"]:
             rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
@@ -1392,7 +1393,11 @@ class Game:
                     line = f"{left} khong cuoi"
                 else:
                     line = f"{left} khong dau"
-                draw_text(self.screen, line, FONT_XS, COLORS["text"], (delivery_box.x + 12, delivery_box.y + 88 + i * 13))
+                col = i // 4
+                row = i % 4
+                x = delivery_box.x + 12 + col * 170
+                y = delivery_box.y + 90 + row * 18
+                draw_text(self.screen, line, FONT_XS, COLORS["text"], (x, y))
         elif self.stage == 6:
             draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
             draw_delivery_badges(BOSS_MAP["delivery"], self.boss_delivered, delivery_box.y + 34)
