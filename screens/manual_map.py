@@ -7,12 +7,13 @@ import pygame
 from algorithms.astar import astar_search
 from algorithms.belief_search import known_goal_belief_search, make_known_map, make_possible_goals, reveal_area, unknown_goal_belief_search, update_possible_goals
 from algorithms.bfs import bfs
+from algorithms.csp_backtracking import backtracking_order, forward_checking_order, make_delivery_route
 from algorithms.dfs import dfs
 from algorithms.greedy import greedy_search
 from algorithms.local_search import manhattan, simple_hill_climbing, simulated_annealing
 from algorithms.search_common import get_delivery_at
 from config import COLORS, FPS, HEIGHT, MAP_X, MAP_Y, PANEL_W, PANEL_X, TILE, WIDTH
-from data.maps import BATTERY_MAX_STAGE2, BELIEF_MAP, BELIEF_UNKNOWN_MAP, LOCAL_MAP, get_map, grid_to_screen, is_belief_walkable, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
+from data.maps import BATTERY_MAX_STAGE2, BELIEF_MAP, BELIEF_UNKNOWN_MAP, CSP_MAP, LOCAL_MAP, get_map, grid_to_screen, is_belief_walkable, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
 from ui.drawing import draw_center, draw_text, wrap_text
 from ui.sprites import draw_battery_bar, draw_charger
 
@@ -30,6 +31,7 @@ ITEM_NAMES = {
     "computer": "May tinh",
     "bolt": "Oc vit",
     "core": "Chip",
+    "sensor": "Cam bien",
 }
 
 ITEM_COLORS = {
@@ -37,6 +39,7 @@ ITEM_COLORS = {
     "computer": (98, 207, 255),
     "bolt": (238, 202, 98),
     "core": (178, 123, 255),
+    "sensor": (82, 220, 145),
 }
 
 
@@ -94,6 +97,7 @@ class Game:
         self.revealed_cells = 0
         self.unknown_cells = 0
         self.goal_seen = True
+        self.csp_order = []
         self.path = [tuple(self.current_map["start"])]
         self.delivered = set()
         self.auto_path = []
@@ -149,8 +153,10 @@ class Game:
             algorithms = ["GREEDY", "A*"]
         elif self.stage == 3:
             algorithms = ["HILL", "ANNEAL"]
-        else:
+        elif self.stage == 4:
             algorithms = ["BIET GOAL", "MU GOAL"]
+        else:
+            algorithms = ["BACKTRACK", "FORWARD"]
         self.algo_buttons = []
         self.buttons = [
             Button((left, 290, 118, 38), "RESET", self.reset_game, FONT),
@@ -170,6 +176,8 @@ class Game:
             self.robot = list(LOCAL_MAP["start"])
         elif self.stage == 4:
             self.robot = self.active_belief_map()["start"][:]
+        elif self.stage == 5:
+            self.robot = CSP_MAP["start"][:]
         else:
             self.robot = self.current_map["start"][:]
         self.facing = "down"
@@ -184,6 +192,7 @@ class Game:
         self.auto_wait = 0
         self.nodes_checked = 0
         self.solution_steps = 0
+        self.csp_order = []
         self.result_message = "Chua chay"
         if self.stage == 4:
             self.reset_belief_state()
@@ -286,6 +295,40 @@ class Game:
                 self.message = f"{self.algorithm} khong tim duoc goal voi thong tin da mo."
             return
 
+        if self.stage == 5:
+            self.robot = CSP_MAP["start"][:]
+            self.facing = "down"
+            self.path = [tuple(self.robot)]
+            self.delivered = set()
+            self.auto_path = []
+            self.auto_wait = 0
+
+            if self.algorithm == "FORWARD":
+                order, nodes = forward_checking_order(CSP_MAP)
+            else:
+                order, nodes = backtracking_order(CSP_MAP)
+            self.nodes_checked = nodes
+
+            if order is None:
+                self.csp_order = []
+                self.solution_steps = 0
+                self.result_message = "That bai"
+                self.message = f"{self.algorithm} khong tim duoc thu tu giao hop le."
+            else:
+                route = make_delivery_route(CSP_MAP, order)
+                self.csp_order = order
+
+                if route is None:
+                    self.solution_steps = 0
+                    self.result_message = "That bai"
+                    self.message = "Tim duoc thu tu nhung robot khong co duong di."
+                else:
+                    self.solution_steps = len(route) - 1
+                    self.auto_path = route[1:]
+                    self.result_message = "Dang chay"
+                    self.message = "Thu tu CSP: " + " -> ".join(order)
+            return
+
         self.auto_path = []
         start_pos = tuple(self.robot)
 
@@ -317,6 +360,10 @@ class Game:
             self.message = "Man 4 doi map bang cach chon BIET GOAL hoac MU GOAL."
             return
 
+        if self.stage == 5:
+            self.message = "Man 5 hien chi co 1 map CSP."
+            return
+
         self.map_index = (self.map_index + 1) % map_count()
         self.current_map = get_map(self.map_index)
         self.reset_game()
@@ -335,6 +382,10 @@ class Game:
             self.stage = 4
             self.algorithm = "BIET GOAL"
             message = "Da chuyen sang man 4: belief state trong moi truong thay mot phan."
+        elif self.stage == 4:
+            self.stage = 5
+            self.algorithm = "BACKTRACK"
+            message = "Da chuyen sang man 5: CSP voi Backtracking."
         else:
             self.stage = 1
             self.algorithm = "BFS"
@@ -362,6 +413,16 @@ class Game:
             if (row, col) == self.active_belief_map()["goal"]:
                 self.result_message = "Hoan thanh"
                 self.message = "Robot da giao chip trong vung map bi mu."
+            return
+
+        if self.stage == 5:
+            label = get_delivery_at(CSP_MAP, row, col)
+            if label and label not in self.delivered:
+                self.delivered.add(label)
+                self.message = f"Da giao mon {label} theo thu tu CSP."
+                if len(self.delivered) == len(CSP_MAP["delivery"]):
+                    self.result_message = "Hoan thanh"
+                    self.message = "Hoan thanh giao hang theo rang buoc CSP."
             return
 
         label = get_delivery_at(self.current_map, row, col)
@@ -442,6 +503,15 @@ class Game:
                     self.message = f"{self.algorithm} dung lai khi chua den goal."
                 return
 
+            if self.stage == 5:
+                if len(self.delivered) == len(CSP_MAP["delivery"]):
+                    self.result_message = "Hoan thanh"
+                    self.message = f"{self.algorithm} da giao du hang theo dung rang buoc."
+                else:
+                    self.result_message = "That bai"
+                    self.message = "Robot dung lai khi chua giao du hang CSP."
+                return
+
             if len(self.delivered) == len(self.current_map["delivery"]):
                 self.result_message = "Hoan thanh"
                 self.message = f"Hoan thanh giao hang bang {self.algorithm}."
@@ -472,6 +542,14 @@ class Game:
 
         if self.stage == 4:
             if is_belief_walkable(nr, nc, self.active_belief_map()):
+                self.auto_path = []
+                self.step_to(nr, nc)
+            else:
+                self.message = "Khong the di vao tuong, hop hoac vung trong."
+            return
+
+        if self.stage == 5:
+            if is_belief_walkable(nr, nc, CSP_MAP):
                 self.auto_path = []
                 self.step_to(nr, nc)
             else:
@@ -566,9 +644,12 @@ class Game:
             note = "Hill Climbing dung o cuc tri cuc bo, Annealing chap nhan buoc xau de thoat"
             title_x, _ = local_grid_to_screen(0, 0)
             note_x = title_x + 2
-        else:
+        elif self.stage == 4:
             title = "Man 4 - Belief State"
             note = "Biet goal hoac mu goal, robot chi thay duoc vung 3x3 quanh minh"
+        else:
+            title = "Man 5 - Rang Buoc CSP"
+            note = "Backtracking tim thu tu giao hang hop le truoc khi robot di chuyen"
         draw_text(self.screen, title, FONT_LG, COLORS["text"], (title_x, 28))
         draw_text(self.screen, note, FONT, COLORS["muted"], (note_x, 66))
 
@@ -579,6 +660,10 @@ class Game:
 
         if self.stage == 4:
             self.draw_belief_map()
+            return
+
+        if self.stage == 5:
+            self.draw_csp_map()
             return
 
         grid = self.current_map["grid"]
@@ -668,6 +753,29 @@ class Game:
                     self.draw_tile(rect, known_tile, r, c)
                 else:
                     self.draw_tile(rect, "F", r, c)
+
+    def draw_csp_map(self):
+        grid = CSP_MAP["grid"]
+        rows = len(grid)
+        cols = len(grid[0])
+        outer = pygame.Rect(MAP_X - 14, MAP_Y - 14, cols * TILE + 28, rows * TILE + 28)
+        pygame.draw.rect(self.screen, (2, 3, 6), outer.move(0, 8), border_radius=6)
+        pygame.draw.rect(self.screen, (26, 31, 43), outer, border_radius=6)
+        pygame.draw.rect(self.screen, (85, 96, 116), outer, 2, border_radius=6)
+
+        for r, row in enumerate(grid):
+            for c, tile in enumerate(row):
+                if tile == ".":
+                    continue
+                rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+                self.draw_tile(rect, tile, r, c)
+
+        for start, end in CSP_MAP["lasers"]:
+            self.draw_laser(start, end)
+
+        for label, (r, c), kind in CSP_MAP["delivery"]:
+            rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+            self.draw_delivery_point(rect, label, kind)
 
     def draw_path(self):
         for index, (r, c) in enumerate(self.path[:-1]):
@@ -780,6 +888,13 @@ class Game:
             for dx, dy in [(-12, 0), (12, 0), (0, -12), (0, 12), (-8, -8), (8, -8), (-8, 8), (8, 8)]:
                 pygame.draw.circle(self.screen, color, (rect.centerx + dx, rect.centery + dy), 3)
             pygame.draw.circle(self.screen, (255, 238, 150), rect.center, 2)
+        elif kind == "sensor":
+            color = (82, 220, 145)
+            pygame.draw.rect(self.screen, (18, 45, 38), (rect.centerx - 13, rect.centery - 10, 26, 20), border_radius=5)
+            pygame.draw.rect(self.screen, color, (rect.centerx - 13, rect.centery - 10, 26, 20), 2, border_radius=5)
+            pygame.draw.circle(self.screen, color, rect.center, 4)
+            pygame.draw.arc(self.screen, (166, 255, 207), (rect.centerx - 11, rect.centery - 11, 22, 22), 3.7, 5.7, 2)
+            pygame.draw.arc(self.screen, (166, 255, 207), (rect.centerx - 17, rect.centery - 17, 34, 34), 3.7, 5.7, 1)
         else:
             color = (178, 123, 255)
             points = [
@@ -922,6 +1037,8 @@ class Game:
             map_line = f"Man 3 | {LOCAL_MAP['name']}"
         elif self.stage == 4:
             map_line = f"Man 4 | {self.active_belief_map()['name']}"
+        elif self.stage == 5:
+            map_line = f"Man 5 | {CSP_MAP['name']}"
         else:
             map_line = f"Man {self.stage} | Map {self.map_index + 1}/{map_count()} - {self.current_map['name']}"
         draw_text(self.screen, map_line, FONT_SM, COLORS["muted"], (panel.x + 24, panel.y + 58))
@@ -977,6 +1094,13 @@ class Game:
             draw_text(self.screen, f"O da biet: {known_cells}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 52))
             draw_text(self.screen, f"Goal co the: {len(self.possible_goals)}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 74))
             draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
+        elif self.stage == 5:
+            order_text = " -> ".join(self.csp_order) if self.csp_order else "Chua co"
+            draw_text(self.screen, f"Vi tri: ({self.robot[0]}, {self.robot[1]})", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
+            draw_text(self.screen, f"Thu tu: {order_text}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 30))
+            draw_text(self.screen, f"Da giao: {len(self.delivered)}/{len(CSP_MAP['delivery'])}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 52))
+            draw_text(self.screen, f"Duong di: {max(0, len(self.path) - 1)} buoc", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 74))
+            draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
         else:
             status = [
                 f"Vi tri: ({self.robot[0]}, {self.robot[1]})",
@@ -987,16 +1111,19 @@ class Game:
             for i, line in enumerate(status):
                 draw_text(self.screen, line, FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 12 + i * 22))
 
-        path_box = pygame.Rect(panel.x + 24, panel.y + 422, panel.w - 48, 58)
-        pygame.draw.rect(self.screen, COLORS["panel_2"], path_box, border_radius=10)
-        pygame.draw.rect(self.screen, (80, 95, 120), path_box, 1, border_radius=10)
-        recent = self.path[-4:]
-        recent_text = " -> ".join([f"({r},{c})" for r, c in recent])
-        draw_text(self.screen, "Cac o vua di:", FONT_SM, COLORS["muted"], (path_box.x + 10, path_box.y + 8))
-        for i, line in enumerate(wrap_text(recent_text, FONT_SM, path_box.w - 20)[:2]):
-            draw_text(self.screen, line, FONT_SM, COLORS["text"], (path_box.x + 10, path_box.y + 28 + i * 18))
+        if self.stage != 5:
+            path_box = pygame.Rect(panel.x + 24, panel.y + 422, panel.w - 48, 58)
+            pygame.draw.rect(self.screen, COLORS["panel_2"], path_box, border_radius=10)
+            pygame.draw.rect(self.screen, (80, 95, 120), path_box, 1, border_radius=10)
+            recent = self.path[-4:]
+            recent_text = " -> ".join([f"({r},{c})" for r, c in recent])
+            draw_text(self.screen, "Cac o vua di:", FONT_SM, COLORS["muted"], (path_box.x + 10, path_box.y + 8))
+            for i, line in enumerate(wrap_text(recent_text, FONT_SM, path_box.w - 20)[:2]):
+                draw_text(self.screen, line, FONT_SM, COLORS["text"], (path_box.x + 10, path_box.y + 28 + i * 18))
 
-        delivery_box = pygame.Rect(panel.x + 24, panel.y + 488, panel.w - 48, 56)
+        delivery_y = panel.y + 422 if self.stage == 5 else panel.y + 488
+        delivery_h = 140 if self.stage == 5 else 56
+        delivery_box = pygame.Rect(panel.x + 24, delivery_y, panel.w - 48, delivery_h)
         pygame.draw.rect(self.screen, COLORS["panel_2"], delivery_box, border_radius=10)
         pygame.draw.rect(self.screen, (80, 95, 120), delivery_box, 1, border_radius=10)
         if self.stage == 3:
@@ -1007,6 +1134,16 @@ class Game:
             draw_text(self.screen, "Belief state:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
             draw_text(self.screen, "known_map + possible_goals", FONT_XS, COLORS["text"], (delivery_box.x + 10, delivery_box.y + 30))
             draw_text(self.screen, "? = vi tri chua bi loai", FONT_XS, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 44))
+        elif self.stage == 5:
+            draw_text(self.screen, "Rang buoc:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 5))
+            for i, (left, rule, right, text) in enumerate(CSP_MAP["constraints"]):
+                if rule == "before":
+                    line = f"{left} truoc {right}"
+                elif rule == "not_last":
+                    line = f"{left} khong cuoi"
+                else:
+                    line = f"{left} khong dau"
+                draw_text(self.screen, line, FONT_XS, COLORS["text"], (delivery_box.x + 12, delivery_box.y + 25 + i * 13))
         else:
             draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
 
@@ -1020,7 +1157,10 @@ class Game:
                 pygame.draw.rect(self.screen, color, (x, y + 3, 9, 9), border_radius=2)
                 draw_text(self.screen, f"{label}: {name}", FONT_XS, COLORS["text"], (x + 14, y))
 
-        log_box = pygame.Rect(panel.x + 24, panel.bottom - 78, panel.w - 48, 58)
+        if self.stage == 5:
+            log_box = pygame.Rect(panel.x + 24, panel.y + 570, panel.w - 48, 48)
+        else:
+            log_box = pygame.Rect(panel.x + 24, panel.bottom - 78, panel.w - 48, 58)
         pygame.draw.rect(self.screen, COLORS["panel_2"], log_box, border_radius=10)
         pygame.draw.rect(self.screen, (80, 95, 120), log_box, 1, border_radius=10)
         for i, line in enumerate(wrap_text(self.message, FONT_SM, log_box.w - 20)[:2]):

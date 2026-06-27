@@ -65,6 +65,41 @@ BELIEF_UNKNOWN_MAP = {
     "lasers": [],
 }
 
+CSP_MAP = {
+    "name": "Kho trung tam CSP",
+    "grid": [
+        "WWWWWWWWWWWWWWWWWWWW",
+        "WFFFFFFFFFFFFFFFFFFW",
+        "WFFFFXFFFFFFFFFFFFFW",
+        "WFFFFFFFXFFFFXFFFFFW",
+        "WFFFFFFFFFF.FFFFFFFW",
+        "WFFFFF....FFFFFFFFFW",
+        "WFFFFXFFFFFFFFXFFFFW",
+        "WFFF.FFFFFFFFFFFFFFW",
+        "WFFFFFFXFFFFFFXFFFFW",
+        "WFFFFFFFFXFF.FFFFFFW",
+        "WWWWWWWWWWWWWWWWWWWW",
+    ],
+    "start": [2, 2],
+    "delivery": [
+        ("A", (1, 3), "medicine"),
+        ("B", (1, 17), "computer"),
+        ("C", (9, 2), "bolt"),
+        ("D", (9, 17), "core"),
+        ("E", (5, 15), "sensor"),
+    ],
+    "constraints": [
+        ("A", "before", "D", "Thuoc A phai giao truoc Chip D"),
+        ("C", "before", "B", "Oc vit C phai giao truoc May tinh B"),
+        ("B", "before", "E", "May tinh B phai giao truoc Cam bien E"),
+        ("E", "before", "D", "Cam bien E phai giao truoc Chip D"),
+        ("A", "before", "E", "Thuoc A phai giao truoc Cam bien E"),
+        ("D", "not_first", None, "Chip D khong duoc giao dau tien"),
+        ("C", "not_last", None, "Oc vit C khong duoc giao cuoi cung"),
+    ],
+    "lasers": [((3, 8), (3, 13)), ((8, 7), (8, 14))],
+}
+
 MAPS = [
     {
         "name": "Kho trung tam",
@@ -172,6 +207,7 @@ for game_map in MAPS:
 LOCAL_MAP["laser_cells"] = make_laser_cells(LOCAL_MAP["lasers"])
 BELIEF_MAP["laser_cells"] = make_laser_cells(BELIEF_MAP["lasers"])
 BELIEF_UNKNOWN_MAP["laser_cells"] = make_laser_cells(BELIEF_UNKNOWN_MAP["lasers"])
+CSP_MAP["laser_cells"] = make_laser_cells(CSP_MAP["lasers"])
 
 
 def get_map(index):
