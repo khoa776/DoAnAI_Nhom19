@@ -5,13 +5,14 @@ import sys
 import pygame
 
 from algorithms.astar import astar_search
+from algorithms.belief_search import known_goal_belief_search, make_known_map, make_possible_goals, reveal_area, unknown_goal_belief_search, update_possible_goals
 from algorithms.bfs import bfs
 from algorithms.dfs import dfs
 from algorithms.greedy import greedy_search
 from algorithms.local_search import manhattan, simple_hill_climbing, simulated_annealing
 from algorithms.search_common import get_delivery_at
 from config import COLORS, FPS, HEIGHT, MAP_X, MAP_Y, PANEL_W, PANEL_X, TILE, WIDTH
-from data.maps import BATTERY_MAX_STAGE2, LOCAL_MAP, get_map, grid_to_screen, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
+from data.maps import BATTERY_MAX_STAGE2, BELIEF_MAP, BELIEF_UNKNOWN_MAP, LOCAL_MAP, get_map, grid_to_screen, is_belief_walkable, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
 from ui.drawing import draw_center, draw_text, wrap_text
 from ui.sprites import draw_battery_bar, draw_charger
 
@@ -88,6 +89,11 @@ class Game:
         self.local_distance = manhattan(LOCAL_MAP["start"], LOCAL_MAP["goal"])
         self.local_bad_moves = 0
         self.local_steps = 0
+        self.known_map = make_known_map(BELIEF_MAP)
+        self.possible_goals = set()
+        self.revealed_cells = 0
+        self.unknown_cells = 0
+        self.goal_seen = True
         self.path = [tuple(self.current_map["start"])]
         self.delivered = set()
         self.auto_path = []
@@ -102,6 +108,35 @@ class Game:
     def max_battery(self):
         return BATTERY_MAX_STAGE2
 
+    def active_belief_map(self):
+        if self.algorithm == "MU GOAL":
+            return BELIEF_UNKNOWN_MAP
+        return BELIEF_MAP
+
+    def count_unknown_cells(self):
+        count = 0
+        for row in self.known_map:
+            for tile in row:
+                if tile == "?":
+                    count += 1
+        return count
+
+    def reset_belief_state(self):
+        game_map = self.active_belief_map()
+        know_goal = self.algorithm == "BIET GOAL"
+        self.known_map = make_known_map(game_map, know_goal)
+        if know_goal:
+            self.possible_goals = {game_map["goal"]}
+        else:
+            self.possible_goals = make_possible_goals(game_map, tuple(self.robot))
+
+        new_cells, found_goal = reveal_area(game_map, self.known_map, tuple(self.robot), know_goal=know_goal)
+        self.revealed_cells = new_cells
+        self.goal_seen = found_goal
+        if update_possible_goals(game_map, self.known_map, self.possible_goals):
+            self.goal_seen = True
+        self.unknown_cells = self.count_unknown_cells()
+
     def make_buttons(self):
         left = PANEL_X + 24
         top = 244
@@ -112,8 +147,10 @@ class Game:
             algorithms = ["BFS", "DFS"]
         elif self.stage == 2:
             algorithms = ["GREEDY", "A*"]
-        else:
+        elif self.stage == 3:
             algorithms = ["HILL", "ANNEAL"]
+        else:
+            algorithms = ["BIET GOAL", "MU GOAL"]
         self.algo_buttons = []
         self.buttons = [
             Button((left, 290, 118, 38), "RESET", self.reset_game, FONT),
@@ -131,6 +168,8 @@ class Game:
     def reset_game(self):
         if self.stage == 3:
             self.robot = list(LOCAL_MAP["start"])
+        elif self.stage == 4:
+            self.robot = self.active_belief_map()["start"][:]
         else:
             self.robot = self.current_map["start"][:]
         self.facing = "down"
@@ -146,10 +185,14 @@ class Game:
         self.nodes_checked = 0
         self.solution_steps = 0
         self.result_message = "Chua chay"
+        if self.stage == 4:
+            self.reset_belief_state()
         self.message = "Da reset man choi ve trang thai ban dau."
 
     def select_algorithm(self, name):
         self.algorithm = name
+        if self.stage == 4:
+            self.reset_game()
         self.message = f"Da chon thuat toan {name}."
 
     def run_algorithm(self):
@@ -214,6 +257,35 @@ class Game:
                 self.message = f"{self.algorithm} tim duoc duong, chap nhan xau {bad_moves} lan."
             return
 
+        if self.stage == 4:
+            game_map = self.active_belief_map()
+            self.robot = game_map["start"][:]
+            self.facing = "down"
+            self.path = [tuple(self.robot)]
+            self.auto_path = []
+            self.auto_wait = 0
+            self.result_message = "Chua chay"
+            self.reset_belief_state()
+
+            if self.algorithm == "MU GOAL":
+                path, nodes, revealed, success, possible_count = unknown_goal_belief_search(game_map, tuple(self.robot))
+            else:
+                path, nodes, revealed, success = known_goal_belief_search(game_map, tuple(self.robot))
+                possible_count = 1
+
+            self.nodes_checked = nodes
+            self.solution_steps = max(0, len(path) - 1)
+
+            if success:
+                self.auto_path = path[1:]
+                self.result_message = "Dang chay"
+                self.message = f"{self.algorithm} tim duong {self.solution_steps} buoc, mo them {revealed} o."
+            else:
+                self.auto_path = path[1:]
+                self.result_message = "That bai"
+                self.message = f"{self.algorithm} khong tim duoc goal voi thong tin da mo."
+            return
+
         self.auto_path = []
         start_pos = tuple(self.robot)
 
@@ -241,6 +313,10 @@ class Game:
             self.message = "Man 3 hien chi co 1 map local search."
             return
 
+        if self.stage == 4:
+            self.message = "Man 4 doi map bang cach chon BIET GOAL hoac MU GOAL."
+            return
+
         self.map_index = (self.map_index + 1) % map_count()
         self.current_map = get_map(self.map_index)
         self.reset_game()
@@ -255,6 +331,10 @@ class Game:
             self.stage = 3
             self.algorithm = "HILL"
             message = "Da chuyen sang man 3: local search voi Manhattan."
+        elif self.stage == 3:
+            self.stage = 4
+            self.algorithm = "BIET GOAL"
+            message = "Da chuyen sang man 4: belief state trong moi truong thay mot phan."
         else:
             self.stage = 1
             self.algorithm = "BFS"
@@ -276,6 +356,12 @@ class Game:
             if (row, col) == LOCAL_MAP["goal"]:
                 self.result_message = "Hoan thanh"
                 self.message = f"{self.algorithm} da toi diem giao hang."
+            return
+
+        if self.stage == 4:
+            if (row, col) == self.active_belief_map()["goal"]:
+                self.result_message = "Hoan thanh"
+                self.message = "Robot da giao chip trong vung map bi mu."
             return
 
         label = get_delivery_at(self.current_map, row, col)
@@ -309,6 +395,17 @@ class Game:
                 self.message = f"Robot den tram sac ({row}, {col}), pin da day lai."
             else:
                 self.message = f"Robot di chuyen toi o ({row}, {col}), ton {cost} pin."
+        elif self.stage == 4:
+            game_map = self.active_belief_map()
+            know_goal = self.algorithm == "BIET GOAL"
+            new_cells, found_goal = reveal_area(game_map, self.known_map, (row, col), know_goal=know_goal)
+            self.revealed_cells += new_cells
+            if found_goal:
+                self.goal_seen = True
+            if update_possible_goals(game_map, self.known_map, self.possible_goals):
+                self.goal_seen = True
+            self.unknown_cells = self.count_unknown_cells()
+            self.message = f"Robot quan sat quanh ({row}, {col}), mo them {new_cells} o."
         else:
             self.message = f"Robot di chuyen toi o ({row}, {col})."
 
@@ -334,6 +431,15 @@ class Game:
                 else:
                     self.result_message = "That bai"
                     self.message = f"{self.algorithm} dung lai khi Manhattan con {self.local_distance}."
+                return
+
+            if self.stage == 4:
+                if tuple(self.robot) == self.active_belief_map()["goal"]:
+                    self.result_message = "Hoan thanh"
+                    self.message = f"{self.algorithm} da tim duoc duong toi goal."
+                else:
+                    self.result_message = "That bai"
+                    self.message = f"{self.algorithm} dung lai khi chua den goal."
                 return
 
             if len(self.delivered) == len(self.current_map["delivery"]):
@@ -362,6 +468,14 @@ class Game:
                 self.step_to(nr, nc)
             else:
                 self.message = "Khong the di vao tuong hoac vat can."
+            return
+
+        if self.stage == 4:
+            if is_belief_walkable(nr, nc, self.active_belief_map()):
+                self.auto_path = []
+                self.step_to(nr, nc)
+            else:
+                self.message = "Khong the di vao tuong, hop hoac vung trong."
             return
 
         if is_walkable(self.current_map, nr, nc):
@@ -447,17 +561,24 @@ class Game:
         elif self.stage == 2:
             title = "Man 2 - Tuyen Duong Nang Luong"
             note = "Map co o ton 2 pin, tram sac va thanh pin cho Greedy/A*"
-        else:
+        elif self.stage == 3:
             title = "Man 3 - Bay Cuc Bo"
             note = "Hill Climbing dung o cuc tri cuc bo, Annealing chap nhan buoc xau de thoat"
             title_x, _ = local_grid_to_screen(0, 0)
             note_x = title_x + 2
+        else:
+            title = "Man 4 - Belief State"
+            note = "Biet goal hoac mu goal, robot chi thay duoc vung 3x3 quanh minh"
         draw_text(self.screen, title, FONT_LG, COLORS["text"], (title_x, 28))
         draw_text(self.screen, note, FONT, COLORS["muted"], (note_x, 66))
 
     def draw_map(self):
         if self.stage == 3:
             self.draw_local_map()
+            return
+
+        if self.stage == 4:
+            self.draw_belief_map()
             return
 
         grid = self.current_map["grid"]
@@ -513,6 +634,41 @@ class Game:
         goal_rect = pygame.Rect(*local_grid_to_screen(goal_row, goal_col), TILE, TILE)
         self.draw_delivery_point(goal_rect, "G", "core")
 
+    def draw_belief_map(self):
+        game_map = self.active_belief_map()
+        grid = game_map["grid"]
+        rows = len(grid)
+        cols = len(grid[0])
+        outer = pygame.Rect(MAP_X - 14, MAP_Y - 14, cols * TILE + 28, rows * TILE + 28)
+        pygame.draw.rect(self.screen, (2, 3, 6), outer.move(0, 8), border_radius=6)
+        pygame.draw.rect(self.screen, (26, 31, 43), outer, border_radius=6)
+        pygame.draw.rect(self.screen, (85, 96, 116), outer, 2, border_radius=6)
+
+        goal_row, goal_col = game_map["goal"]
+
+        for r, row in enumerate(grid):
+            for c, tile in enumerate(row):
+                rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+
+                if tile == "W":
+                    self.draw_tile(rect, "W", r, c)
+                    continue
+
+                if (r, c) == (goal_row, goal_col) and self.known_map[r][c] == "G":
+                    self.draw_floor(rect)
+                    self.draw_goal_beacon(rect)
+                    continue
+
+                known_tile = self.known_map[r][c]
+                if known_tile == "?":
+                    self.draw_unknown_tile(rect)
+                elif known_tile == ".":
+                    self.draw_hole(rect)
+                elif known_tile == "W" or known_tile == "X":
+                    self.draw_tile(rect, known_tile, r, c)
+                else:
+                    self.draw_tile(rect, "F", r, c)
+
     def draw_path(self):
         for index, (r, c) in enumerate(self.path[:-1]):
             if self.stage == 3:
@@ -560,6 +716,25 @@ class Game:
         pygame.draw.rect(self.screen, (2, 4, 8), rect)
         pygame.draw.rect(self.screen, (18, 25, 36), rect.inflate(-6, -6), 1)
         pygame.draw.circle(self.screen, (8, 12, 20), rect.center, 10)
+
+    def draw_unknown_tile(self, rect):
+        pygame.draw.rect(self.screen, (12, 17, 27), rect)
+        pygame.draw.rect(self.screen, (34, 47, 66), rect.inflate(-6, -6), 1)
+
+        for offset in range(-TILE, TILE, 12):
+            start = (rect.x + offset, rect.bottom)
+            end = (rect.x + offset + TILE, rect.y)
+            pygame.draw.line(self.screen, (20, 33, 48), start, end, 1)
+
+        pulse = pygame.Rect(rect.x + 11, rect.y + 11, rect.w - 22, rect.h - 22)
+        pygame.draw.rect(self.screen, (33, 80, 105), pulse, 1, border_radius=4)
+        pygame.draw.circle(self.screen, (57, 175, 190), rect.center, 3)
+        draw_center(self.screen, "?", FONT_SM, (92, 124, 150), rect)
+
+    def draw_goal_beacon(self, rect):
+        self.draw_delivery_point(rect, "G", "core")
+        pygame.draw.circle(self.screen, (178, 123, 255), rect.center, 20, 1)
+        pygame.draw.circle(self.screen, (77, 194, 255), rect.center, 16, 1)
 
     def draw_wall(self, rect):
         pygame.draw.rect(self.screen, COLORS["wall"], rect)
@@ -745,6 +920,8 @@ class Game:
         draw_text(self.screen, "Bang dieu khien", FONT_MD, COLORS["text"], (panel.x + 24, panel.y + 24))
         if self.stage == 3:
             map_line = f"Man 3 | {LOCAL_MAP['name']}"
+        elif self.stage == 4:
+            map_line = f"Man 4 | {self.active_belief_map()['name']}"
         else:
             map_line = f"Man {self.stage} | Map {self.map_index + 1}/{map_count()} - {self.current_map['name']}"
         draw_text(self.screen, map_line, FONT_SM, COLORS["muted"], (panel.x + 24, panel.y + 58))
@@ -791,6 +968,15 @@ class Game:
             draw_text(self.screen, f"Manhattan: {self.local_distance}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 52))
             draw_text(self.screen, f"Buoc xau: {self.local_bad_moves}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 74))
             draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
+        elif self.stage == 4:
+            game_map = self.active_belief_map()
+            known_cells = len(game_map["grid"]) * len(game_map["grid"][0]) - self.unknown_cells
+            goal_text = str(game_map["goal"]) if self.goal_seen else "Chua biet"
+            draw_text(self.screen, f"Vi tri: ({self.robot[0]}, {self.robot[1]})", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
+            draw_text(self.screen, f"Goal: {goal_text}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 30))
+            draw_text(self.screen, f"O da biet: {known_cells}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 52))
+            draw_text(self.screen, f"Goal co the: {len(self.possible_goals)}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 74))
+            draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
         else:
             status = [
                 f"Vi tri: ({self.robot[0]}, {self.robot[1]})",
@@ -817,6 +1003,10 @@ class Game:
             draw_text(self.screen, "Muc tieu local:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
             draw_text(self.screen, "G: Giao chip khan cap", FONT_XS, COLORS["text"], (delivery_box.x + 10, delivery_box.y + 30))
             draw_text(self.screen, "Hill chi di khi Manhattan giam", FONT_XS, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 44))
+        elif self.stage == 4:
+            draw_text(self.screen, "Belief state:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
+            draw_text(self.screen, "known_map + possible_goals", FONT_XS, COLORS["text"], (delivery_box.x + 10, delivery_box.y + 30))
+            draw_text(self.screen, "? = vi tri chua bi loai", FONT_XS, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 44))
         else:
             draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
 

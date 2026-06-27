@@ -23,6 +23,48 @@ LOCAL_MAP = {
     "lasers": [((5, 5), (5, 9)), ((8, 4), (8, 10))],
 }
 
+BELIEF_MAP = {
+    "name": "Kho mat tin hieu",
+    "grid": [
+        "WWWWWWWWWWWWWWWWWWWW",
+        "WFFFFFFFFFFFFXFFFFFW",
+        "WFFFFXFFFFF.FXFFFFFW",
+        "WFFXFFFFXFFFFFFFXFFW",
+        "WFFFFF....FFFFXFFFFW",
+        "WFXFFFFFFFFFFFFFFXFW",
+        "WFFFFXFFFFXFFFF.FFFW",
+        "WFFFFFFFFFFFFXFFFFFW",
+        "WFFXFFFF....FFFFXFFW",
+        "WFFFFFFFFXFFFFFFFFFW",
+        "WWWWWWWWWWWWWWWWWWWW",
+    ],
+    "start": [9, 2],
+    "goal": (1, 17),
+    "delivery": [("G", (1, 17), "core")],
+    "lasers": [],
+}
+
+BELIEF_UNKNOWN_MAP = {
+    "name": "Khu hang bi an",
+    "grid": [
+        "WWWWWWWWWWWWWWWWWWWW",
+        "WFFFFFFFFFFXFFFFFFFW",
+        "WFXFFF.FFFFXFFFFXFFW",
+        "WFXFXXFFFFF.FFFFXFFW",
+        "WFFFFFXFFFFFXXXFFFFW",
+        "WFFFFF....FFFFFFFFFW",
+        "WFXFFFFFXFFFFFXFFFFW",
+        "WFFFFXFFFFFFF.FFFXFW",
+        "WFFFFFXXXFFFFFXFFFFW",
+        "WFFFFFFFFFFFFFXXFFFW",
+        "WWWWWWWWWWWWWWWWWWWW",
+    ],
+    "start": [1, 2],
+    "goal": (9, 17),
+    "delivery": [("G", (9, 17), "core")],
+    "lasers": [],
+}
+
 MAPS = [
     {
         "name": "Kho trung tam",
@@ -128,6 +170,8 @@ for game_map in MAPS:
     game_map["laser_cells"] = make_laser_cells(game_map["lasers"])
 
 LOCAL_MAP["laser_cells"] = make_laser_cells(LOCAL_MAP["lasers"])
+BELIEF_MAP["laser_cells"] = make_laser_cells(BELIEF_MAP["lasers"])
+BELIEF_UNKNOWN_MAP["laser_cells"] = make_laser_cells(BELIEF_UNKNOWN_MAP["lasers"])
 
 
 def get_map(index):
@@ -189,3 +233,18 @@ def is_local_walkable(row, col):
         return False
 
     return grid[row][col] != "W" and grid[row][col] != "X" and grid[row][col] != "."
+
+
+def is_belief_walkable(row, col, game_map=None):
+    if game_map is None:
+        game_map = BELIEF_MAP
+
+    grid = game_map["grid"]
+
+    if row < 0 or row >= len(grid):
+        return False
+    if col < 0 or col >= len(grid[0]):
+        return False
+
+    tile = grid[row][col]
+    return tile != "W" and tile != "X" and tile != "."
