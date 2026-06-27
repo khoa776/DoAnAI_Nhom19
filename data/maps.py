@@ -100,6 +100,33 @@ CSP_MAP = {
     "lasers": [((3, 8), (3, 13)), ((8, 7), (8, 14))],
 }
 
+BOSS_MAP = {
+    "name": "Boss giao hang",
+    "grid": [
+        "WWWWWWWWWWWWWWWWWWWW",
+        "WFFFFFFFFFFFFFFFFFFW",
+        "WFFXFFFFFXXFFFFFXFFW",
+        "WFFFFFFFFFFFFXFFFXFW",
+        "WFF...FFFFFF...FFFFW",
+        "WFFFFFFFXFFXFFFFFFFW",
+        "WFFFFXFFFFFFFFXFFFFW",
+        "WFXFFFFFFFFXFFFXFFFW",
+        "WFFFF...FFFFF...FFFW",
+        "WFFFFFFFFFFFFFFFFFFW",
+        "WWWWWWWWWWWWWWWWWWWW",
+    ],
+    "start": [9, 2],
+    "boss": [5, 10],
+    "chargers": [],
+    "delivery": [
+        ("A", (1, 3), "medicine"),
+        ("B", (1, 16), "computer"),
+        ("C", (9, 16), "bolt"),
+        ("D", (9, 3), "core"),
+    ],
+    "lasers": [((3, 13), (3, 17)), ((7, 11), (7, 15))],
+}
+
 MAPS = [
     {
         "name": "Kho trung tam",
@@ -208,6 +235,7 @@ LOCAL_MAP["laser_cells"] = make_laser_cells(LOCAL_MAP["lasers"])
 BELIEF_MAP["laser_cells"] = make_laser_cells(BELIEF_MAP["lasers"])
 BELIEF_UNKNOWN_MAP["laser_cells"] = make_laser_cells(BELIEF_UNKNOWN_MAP["lasers"])
 CSP_MAP["laser_cells"] = make_laser_cells(CSP_MAP["lasers"])
+BOSS_MAP["laser_cells"] = make_laser_cells(BOSS_MAP["lasers"])
 
 
 def get_map(index):

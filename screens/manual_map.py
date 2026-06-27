@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
 import sys
+import time
 
 import pygame
 
 from algorithms.astar import astar_search
+from algorithms.adversarial_search import make_alpha_beta_plan, make_minimax_plan
 from algorithms.belief_search import known_goal_belief_search, make_known_map, make_possible_goals, reveal_area, unknown_goal_belief_search, update_possible_goals
 from algorithms.bfs import bfs
 from algorithms.csp_backtracking import backtracking_order, forward_checking_order, make_delivery_route
@@ -13,7 +16,7 @@ from algorithms.greedy import greedy_search
 from algorithms.local_search import manhattan, simple_hill_climbing, simulated_annealing
 from algorithms.search_common import get_delivery_at
 from config import COLORS, FPS, HEIGHT, MAP_X, MAP_Y, PANEL_W, PANEL_X, TILE, WIDTH
-from data.maps import BATTERY_MAX_STAGE2, BELIEF_MAP, BELIEF_UNKNOWN_MAP, CSP_MAP, LOCAL_MAP, get_map, grid_to_screen, is_belief_walkable, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
+from data.maps import BATTERY_MAX_STAGE2, BELIEF_MAP, BELIEF_UNKNOWN_MAP, BOSS_MAP, CSP_MAP, LOCAL_MAP, get_map, grid_to_screen, is_belief_walkable, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
 from ui.drawing import draw_center, draw_text, wrap_text
 from ui.sprites import draw_battery_bar, draw_charger
 
@@ -81,6 +84,7 @@ class Game:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("DoAnAI - Sci-fi Grid Prototype")
         self.clock = pygame.time.Clock()
+        self.boss_image = self.load_boss_image()
         self.stage = 1
         self.map_index = 0
         self.current_map = get_map(self.map_index)
@@ -98,16 +102,33 @@ class Game:
         self.unknown_cells = 0
         self.goal_seen = True
         self.csp_order = []
+        self.boss = BOSS_MAP["boss"][:]
+        self.boss_delivered = set()
+        self.boss_delivered_path = []
         self.path = [tuple(self.current_map["start"])]
         self.delivered = set()
         self.auto_path = []
+        self.boss_auto_path = []
         self.auto_wait = 0
         self.nodes_checked = 0
+        self.algorithm_time = 0.0
         self.solution_steps = 0
         self.result_message = "Chua chay"
         self.message = "Dung phim mui ten de di chuyen robot."
         self.buttons = []
         self.make_buttons()
+
+    def load_boss_image(self):
+        root_folder = os.path.dirname(os.path.dirname(__file__))
+        image_path = os.path.join(root_folder, "assets", "boss_sprite.png")
+
+        if not os.path.exists(image_path):
+            return None
+
+        image = pygame.image.load(image_path).convert_alpha()
+        width = int(TILE * 2.7)
+        height = int(width * image.get_height() / image.get_width())
+        return pygame.transform.smoothscale(image, (width, height))
 
     def max_battery(self):
         return BATTERY_MAX_STAGE2
@@ -144,9 +165,9 @@ class Game:
     def make_buttons(self):
         left = PANEL_X + 24
         top = 244
-        bw = 118
-        bh = 36
-        gap = 10
+        gap = 12
+        bw = (PANEL_W - 48 - gap) // 2
+        bh = 38
         if self.stage == 1:
             algorithms = ["BFS", "DFS"]
         elif self.stage == 2:
@@ -155,14 +176,16 @@ class Game:
             algorithms = ["HILL", "ANNEAL"]
         elif self.stage == 4:
             algorithms = ["BIET GOAL", "MU GOAL"]
-        else:
+        elif self.stage == 5:
             algorithms = ["BACKTRACK", "FORWARD"]
+        else:
+            algorithms = ["MINIMAX", "ALPHA-BETA"]
         self.algo_buttons = []
         self.buttons = [
-            Button((left, 290, 118, 38), "RESET", self.reset_game, FONT),
-            Button((left + 128, 290, 118, 38), "CHAY AI", self.run_algorithm, FONT),
-            Button((left, 338, 118, 38), "DOI MAP", self.change_map, FONT),
-            Button((left + 128, 338, 118, 38), "DOI MAN", self.change_stage, FONT),
+            Button((left, 296, bw, 38), "RESET", self.reset_game, FONT),
+            Button((left + bw + gap, 296, bw, 38), "CHAY AI", self.run_algorithm, FONT),
+            Button((left, 344, bw, 38), "DOI MAP", self.change_map, FONT),
+            Button((left + bw + gap, 344, bw, 38), "DOI MAN", self.change_stage, FONT),
         ]
         for i, name in enumerate(algorithms):
             x = left + (i % 2) * (bw + gap)
@@ -178,6 +201,11 @@ class Game:
             self.robot = self.active_belief_map()["start"][:]
         elif self.stage == 5:
             self.robot = CSP_MAP["start"][:]
+        elif self.stage == 6:
+            self.robot = BOSS_MAP["start"][:]
+            self.boss = BOSS_MAP["boss"][:]
+            self.boss_delivered = set()
+            self.boss_delivered_path = []
         else:
             self.robot = self.current_map["start"][:]
         self.facing = "down"
@@ -189,8 +217,10 @@ class Game:
         self.path = [tuple(self.robot)]
         self.delivered = set()
         self.auto_path = []
+        self.boss_auto_path = []
         self.auto_wait = 0
         self.nodes_checked = 0
+        self.algorithm_time = 0.0
         self.solution_steps = 0
         self.csp_order = []
         self.result_message = "Chua chay"
@@ -209,10 +239,12 @@ class Game:
             self.auto_path = []
             start_pos = tuple(self.robot)
 
+            start_time = time.perf_counter()
             if self.algorithm == "GREEDY":
                 path, nodes, cost = greedy_search(self.current_map, start_pos, self.battery, self.delivered)
             else:
                 path, nodes, cost = astar_search(self.current_map, start_pos, self.battery, self.delivered)
+            self.algorithm_time = time.perf_counter() - start_time
 
             self.nodes_checked = nodes
 
@@ -243,10 +275,12 @@ class Game:
             self.path = [tuple(self.robot)]
             self.auto_path = []
 
+            start_time = time.perf_counter()
             if self.algorithm == "HILL":
                 path, nodes, distance, success, steps, bad_moves = simple_hill_climbing(LOCAL_MAP)
             else:
                 path, nodes, distance, success, steps, bad_moves = simulated_annealing(LOCAL_MAP)
+            self.algorithm_time = time.perf_counter() - start_time
 
             self.local_distance = distance
             self.local_bad_moves = bad_moves
@@ -276,11 +310,13 @@ class Game:
             self.result_message = "Chua chay"
             self.reset_belief_state()
 
+            start_time = time.perf_counter()
             if self.algorithm == "MU GOAL":
                 path, nodes, revealed, success, possible_count = unknown_goal_belief_search(game_map, tuple(self.robot))
             else:
                 path, nodes, revealed, success = known_goal_belief_search(game_map, tuple(self.robot))
                 possible_count = 1
+            self.algorithm_time = time.perf_counter() - start_time
 
             self.nodes_checked = nodes
             self.solution_steps = max(0, len(path) - 1)
@@ -303,10 +339,12 @@ class Game:
             self.auto_path = []
             self.auto_wait = 0
 
+            start_time = time.perf_counter()
             if self.algorithm == "FORWARD":
                 order, nodes = forward_checking_order(CSP_MAP)
             else:
                 order, nodes = backtracking_order(CSP_MAP)
+            self.algorithm_time = time.perf_counter() - start_time
             self.nodes_checked = nodes
 
             if order is None:
@@ -329,13 +367,42 @@ class Game:
                     self.message = "Thu tu CSP: " + " -> ".join(order)
             return
 
+        if self.stage == 6:
+            self.robot = BOSS_MAP["start"][:]
+            self.boss = BOSS_MAP["boss"][:]
+            self.facing = "down"
+            self.boss_delivered = set()
+            self.boss_delivered_path = []
+            self.path = [tuple(self.robot)]
+            self.auto_path = []
+            self.boss_auto_path = []
+            self.auto_wait = 0
+
+            start_time = time.perf_counter()
+            if self.algorithm == "ALPHA-BETA":
+                robot_path, boss_path, delivered_path, nodes, success, reason = make_alpha_beta_plan(BOSS_MAP, depth=6, max_turns=120)
+            else:
+                robot_path, boss_path, delivered_path, nodes, success, reason = make_minimax_plan(BOSS_MAP, depth=6, max_turns=120)
+            self.algorithm_time = time.perf_counter() - start_time
+
+            self.nodes_checked = nodes
+            self.solution_steps = max(0, len(robot_path) - 1)
+            self.auto_path = robot_path[1:]
+            self.boss_auto_path = boss_path[1:]
+            self.boss_delivered_path = delivered_path[1:]
+            self.result_message = "Dang chay" if self.auto_path else ("Hoan thanh" if success else "That bai")
+            self.message = f"{self.algorithm} tao {self.solution_steps} luot, du kien: {reason}."
+            return
+
         self.auto_path = []
         start_pos = tuple(self.robot)
 
+        start_time = time.perf_counter()
         if self.algorithm == "BFS":
             path, nodes = bfs(self.current_map, start_pos, self.delivered)
         else:
             path, nodes = dfs(self.current_map, start_pos, self.delivered)
+        self.algorithm_time = time.perf_counter() - start_time
 
         self.nodes_checked = nodes
 
@@ -364,6 +431,10 @@ class Game:
             self.message = "Man 5 hien chi co 1 map CSP."
             return
 
+        if self.stage == 6:
+            self.message = "Man 6 hien chi co 1 map boss."
+            return
+
         self.map_index = (self.map_index + 1) % map_count()
         self.current_map = get_map(self.map_index)
         self.reset_game()
@@ -386,6 +457,10 @@ class Game:
             self.stage = 5
             self.algorithm = "BACKTRACK"
             message = "Da chuyen sang man 5: CSP voi Backtracking."
+        elif self.stage == 5:
+            self.stage = 6
+            self.algorithm = "MINIMAX"
+            message = "Da chuyen sang man 6: giao hang ne boss."
         else:
             self.stage = 1
             self.algorithm = "BFS"
@@ -396,10 +471,27 @@ class Game:
         self.message = message
 
     def active_chargers(self):
+        if self.stage == 6:
+            return BOSS_MAP["chargers"]
         return self.current_map["chargers"]
 
     def is_active_charger(self, row, col):
         return (row, col) in self.active_chargers()
+
+    def boss_danger_cells(self):
+        cells = set()
+        boss_row, boss_col = self.boss
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                cells.add((boss_row + dr, boss_col + dc))
+        return cells
+
+    def current_boss_target(self):
+        labels = []
+        for label, pos, kind in BOSS_MAP["delivery"]:
+            if label not in self.boss_delivered:
+                labels.append(label)
+        return ", ".join(labels) if labels else "Xong"
 
     def update_delivery(self, row, col):
         if self.stage == 3:
@@ -423,6 +515,17 @@ class Game:
                 if len(self.delivered) == len(CSP_MAP["delivery"]):
                     self.result_message = "Hoan thanh"
                     self.message = "Hoan thanh giao hang theo rang buoc CSP."
+            return
+
+        if self.stage == 6:
+            label = get_delivery_at(BOSS_MAP, row, col)
+            if label and label not in self.boss_delivered:
+                self.boss_delivered.add(label)
+                if len(self.boss_delivered) == len(BOSS_MAP["delivery"]):
+                    self.result_message = "Hoan thanh"
+                    self.message = "Da giao du hang va thang man boss."
+                else:
+                    self.message = f"Da giao {label}."
             return
 
         label = get_delivery_at(self.current_map, row, col)
@@ -467,6 +570,12 @@ class Game:
                 self.goal_seen = True
             self.unknown_cells = self.count_unknown_cells()
             self.message = f"Robot quan sat quanh ({row}, {col}), mo them {new_cells} o."
+        elif self.stage == 6:
+            if (row, col) in self.boss_danger_cells():
+                self.result_message = "That bai"
+                self.message = "Robot di vao vung nguy hiem cua boss."
+            else:
+                self.message = f"Robot di toi ({row}, {col})."
         else:
             self.message = f"Robot di chuyen toi o ({row}, {col})."
 
@@ -481,6 +590,38 @@ class Game:
             return
 
         self.auto_wait = 0
+
+        if self.stage == 6:
+            row, col = self.auto_path.pop(0)
+            boss_pos = self.boss
+            if self.boss_auto_path:
+                boss_pos = self.boss_auto_path.pop(0)
+
+            self.step_to(row, col)
+            if self.boss_delivered_path:
+                self.boss_delivered = set(self.boss_delivered_path.pop(0))
+
+            if self.result_message != "Hoan thanh":
+                self.boss = [boss_pos[0], boss_pos[1]]
+                if tuple(self.robot) in self.boss_danger_cells():
+                    self.auto_path = []
+                    self.boss_auto_path = []
+                    self.result_message = "That bai"
+                    self.message = "Boss da ap sat robot trong vung nguy hiem."
+                    return
+
+            if not self.auto_path:
+                if len(self.boss_delivered) == len(BOSS_MAP["delivery"]):
+                    self.result_message = "Hoan thanh"
+                    self.message = f"{self.algorithm} da giao du 4 mon hang."
+                elif tuple(self.robot) in self.boss_danger_cells():
+                    self.result_message = "That bai"
+                    self.message = f"{self.algorithm} dung lai vi boss bat kip."
+                else:
+                    self.result_message = "That bai"
+                    self.message = f"{self.algorithm} dung lai khi chua giao du hang."
+            return
+
         row, col = self.auto_path.pop(0)
         self.step_to(row, col)
 
@@ -550,6 +691,17 @@ class Game:
 
         if self.stage == 5:
             if is_belief_walkable(nr, nc, CSP_MAP):
+                self.auto_path = []
+                self.step_to(nr, nc)
+            else:
+                self.message = "Khong the di vao tuong, hop hoac vung trong."
+            return
+
+        if self.stage == 6:
+            if self.result_message in ["Hoan thanh", "That bai"]:
+                self.message = "Man choi da ket thuc, bam RESET de choi lai."
+                return
+            if is_belief_walkable(nr, nc, BOSS_MAP) and (nr, nc) not in BOSS_MAP["laser_cells"]:
                 self.auto_path = []
                 self.step_to(nr, nc)
             else:
@@ -647,9 +799,12 @@ class Game:
         elif self.stage == 4:
             title = "Man 4 - Belief State"
             note = "Biet goal hoac mu goal, robot chi thay duoc vung 3x3 quanh minh"
-        else:
+        elif self.stage == 5:
             title = "Man 5 - Rang Buoc CSP"
             note = "Backtracking tim thu tu giao hang hop le truoc khi robot di chuyen"
+        else:
+            title = "Man 6 - Giao Hang Ne Boss"
+            note = "Giao du 4 mon theo thu tu bat ky va tranh vung nguy hiem 3x3 cua boss"
         draw_text(self.screen, title, FONT_LG, COLORS["text"], (title_x, 28))
         draw_text(self.screen, note, FONT, COLORS["muted"], (note_x, 66))
 
@@ -664,6 +819,10 @@ class Game:
 
         if self.stage == 5:
             self.draw_csp_map()
+            return
+
+        if self.stage == 6:
+            self.draw_boss_map()
             return
 
         grid = self.current_map["grid"]
@@ -777,6 +936,40 @@ class Game:
             rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
             self.draw_delivery_point(rect, label, kind)
 
+    def draw_boss_map(self):
+        grid = BOSS_MAP["grid"]
+        rows = len(grid)
+        cols = len(grid[0])
+        outer = pygame.Rect(MAP_X - 14, MAP_Y - 14, cols * TILE + 28, rows * TILE + 28)
+        pygame.draw.rect(self.screen, (2, 3, 6), outer.move(0, 8), border_radius=6)
+        pygame.draw.rect(self.screen, (26, 31, 43), outer, border_radius=6)
+        pygame.draw.rect(self.screen, (85, 96, 116), outer, 2, border_radius=6)
+
+        for r, row in enumerate(grid):
+            for c, tile in enumerate(row):
+                if tile == ".":
+                    continue
+                rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+                self.draw_tile(rect, tile, r, c)
+
+        for r, c in self.boss_danger_cells():
+            if is_belief_walkable(r, c, BOSS_MAP):
+                rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+                self.draw_boss_danger(rect)
+
+        for start, end in BOSS_MAP["lasers"]:
+            self.draw_laser(start, end)
+
+        for index, (r, c) in enumerate(BOSS_MAP["chargers"], start=1):
+            rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+            draw_charger(self.screen, rect, f"S{index}", COLORS, FONT_SM)
+
+        for label, (r, c), kind in BOSS_MAP["delivery"]:
+            rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+            self.draw_delivery_point(rect, label, kind)
+
+        self.draw_boss()
+
     def draw_path(self):
         for index, (r, c) in enumerate(self.path[:-1]):
             if self.stage == 3:
@@ -838,6 +1031,14 @@ class Game:
         pygame.draw.rect(self.screen, (33, 80, 105), pulse, 1, border_radius=4)
         pygame.draw.circle(self.screen, (57, 175, 190), rect.center, 3)
         draw_center(self.screen, "?", FONT_SM, (92, 124, 150), rect)
+
+    def draw_boss_danger(self, rect):
+        warning = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
+        pygame.draw.rect(warning, (210, 35, 48, 88), (0, 0, TILE, TILE))
+        pygame.draw.rect(warning, (255, 118, 118, 125), (4, 4, TILE - 8, TILE - 8), 2)
+        pygame.draw.line(warning, (255, 90, 90, 130), (8, 8), (TILE - 8, TILE - 8), 2)
+        pygame.draw.line(warning, (255, 90, 90, 130), (TILE - 8, 8), (8, TILE - 8), 2)
+        self.screen.blit(warning, rect.topleft)
 
     def draw_goal_beacon(self, rect):
         self.draw_delivery_point(rect, "G", "core")
@@ -1027,8 +1228,62 @@ class Game:
         rect(4 + eye_shift, -13, 3, 4, eye)
         rect(-5 + eye_shift, -8, 10, 1, accent)
 
+    def draw_boss(self):
+        row, col = self.boss
+        x, y = grid_to_screen(row, col)
+        cx, cy = x + TILE // 2, y + TILE // 2
+
+        if self.boss_image:
+            rect = self.boss_image.get_rect(midbottom=(cx, y + TILE + 4))
+            pygame.draw.ellipse(self.screen, (2, 3, 6), (cx - 35, y + TILE - 5, 70, 13))
+            self.screen.blit(self.boss_image, rect)
+            return
+
+        dark = (24, 22, 25)
+        mid = (54, 48, 52)
+        edge = (113, 102, 104)
+        glow = (255, 205, 82)
+        red = (183, 52, 62)
+
+        pygame.draw.ellipse(self.screen, (2, 3, 6), (cx - 30, cy + 20, 60, 14))
+
+        pygame.draw.circle(self.screen, dark, (cx - 22, cy - 1), 13)
+        pygame.draw.circle(self.screen, dark, (cx + 22, cy - 1), 13)
+        pygame.draw.circle(self.screen, edge, (cx - 22, cy - 1), 13, 2)
+        pygame.draw.circle(self.screen, edge, (cx + 22, cy - 1), 13, 2)
+
+        pygame.draw.line(self.screen, dark, (cx - 16, cy + 9), (cx - 28, cy + 22), 8)
+        pygame.draw.line(self.screen, dark, (cx + 16, cy + 9), (cx + 28, cy + 22), 8)
+        pygame.draw.circle(self.screen, mid, (cx - 31, cy + 25), 7)
+        pygame.draw.circle(self.screen, mid, (cx + 31, cy + 25), 7)
+
+        body = [
+            (cx, cy - 10),
+            (cx + 18, cy + 3),
+            (cx + 12, cy + 26),
+            (cx, cy + 34),
+            (cx - 12, cy + 26),
+            (cx - 18, cy + 3),
+        ]
+        pygame.draw.polygon(self.screen, dark, body)
+        pygame.draw.polygon(self.screen, edge, body, 2)
+        pygame.draw.circle(self.screen, mid, (cx, cy + 11), 11)
+        pygame.draw.circle(self.screen, edge, (cx, cy + 11), 11, 2)
+
+        head = pygame.Rect(cx - 13, cy - 30, 26, 22)
+        pygame.draw.rect(self.screen, dark, head, border_radius=8)
+        pygame.draw.rect(self.screen, edge, head, 2, border_radius=8)
+        pygame.draw.circle(self.screen, glow, (cx - 5, cy - 18), 3)
+        pygame.draw.circle(self.screen, glow, (cx + 5, cy - 18), 3)
+        pygame.draw.line(self.screen, red, (cx - 7, cy - 11), (cx + 7, cy - 11), 2)
+
+        pygame.draw.line(self.screen, dark, (cx - 9, cy + 28), (cx - 18, cy + 43), 8)
+        pygame.draw.line(self.screen, dark, (cx + 9, cy + 28), (cx + 18, cy + 43), 8)
+        pygame.draw.rect(self.screen, mid, (cx - 26, cy + 39, 16, 7), border_radius=3)
+        pygame.draw.rect(self.screen, mid, (cx + 10, cy + 39, 16, 7), border_radius=3)
+
     def draw_panel(self):
-        panel = pygame.Rect(PANEL_X, 92, PANEL_W, 630)
+        panel = pygame.Rect(PANEL_X, 72, PANEL_W, 700)
         pygame.draw.rect(self.screen, (7, 10, 16), panel.move(0, 6), border_radius=14)
         pygame.draw.rect(self.screen, COLORS["panel"], panel, border_radius=14)
         pygame.draw.rect(self.screen, (80, 95, 120), panel, 2, border_radius=14)
@@ -1039,36 +1294,38 @@ class Game:
             map_line = f"Man 4 | {self.active_belief_map()['name']}"
         elif self.stage == 5:
             map_line = f"Man 5 | {CSP_MAP['name']}"
+        elif self.stage == 6:
+            map_line = f"Man 6 | {BOSS_MAP['name']}"
         else:
             map_line = f"Man {self.stage} | Map {self.map_index + 1}/{map_count()} - {self.current_map['name']}"
         draw_text(self.screen, map_line, FONT_SM, COLORS["muted"], (panel.x + 24, panel.y + 58))
 
         info = [
             f"Thuat toan dang chon: {self.algorithm}",
-            f"Node da xet: {self.nodes_checked}",
         ]
         y = panel.y + 92
         for line in info:
             draw_text(self.screen, line, FONT_SM, COLORS["text"], (panel.x + 24, y))
             y += 24
 
-        draw_text(self.screen, "Chon thuat toan", FONT, COLORS["text"], (panel.x + 24, panel.y + 128))
+        draw_text(self.screen, "Chon thuat toan", FONT, COLORS["text"], (panel.x + 24, panel.y + 136))
 
         mouse = pygame.mouse.get_pos()
         for button in self.buttons:
             selected = button in self.algo_buttons and button.label == self.algorithm
             button.draw(self.screen, mouse, selected)
 
-        status_box = pygame.Rect(panel.x + 24, panel.y + 300, panel.w - 48, 112)
+        status_box = pygame.Rect(panel.x + 24, panel.y + 316, panel.w - 48, 112)
         pygame.draw.rect(self.screen, COLORS["panel_2"], status_box, border_radius=10)
         pygame.draw.rect(self.screen, (80, 95, 120), status_box, 1, border_radius=10)
         if self.stage == 2:
-            draw_text(self.screen, f"Vi tri: ({self.robot[0]}, {self.robot[1]})", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
-            draw_text(self.screen, "Pin", FONT_SM, COLORS["muted"], (status_box.x + 10, status_box.y + 32))
+            draw_text(self.screen, f"Thoi gian chay: {self.algorithm_time * 1000:.2f} ms", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
+            draw_text(self.screen, f"Node da xet: {self.nodes_checked}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 30))
+            draw_text(self.screen, "Pin", FONT_SM, COLORS["muted"], (status_box.x + 10, status_box.y + 54))
             draw_battery_bar(
                 self.screen,
                 status_box.x + 48,
-                status_box.y + 29,
+                status_box.y + 51,
                 150,
                 22,
                 self.battery,
@@ -1076,43 +1333,13 @@ class Game:
                 COLORS,
                 FONT_XS,
             )
-            draw_text(self.screen, f"Pin da tieu: {self.energy_used}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 56))
-            draw_text(self.screen, f"Da giao: {len(self.delivered)}/{len(self.current_map['delivery'])}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 76))
-            draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
-        elif self.stage == 3:
-            draw_text(self.screen, f"Vi tri: ({self.robot[0]}, {self.robot[1]})", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
-            draw_text(self.screen, f"Goal: {LOCAL_MAP['goal']}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 30))
-            draw_text(self.screen, f"Manhattan: {self.local_distance}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 52))
-            draw_text(self.screen, f"Buoc xau: {self.local_bad_moves}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 74))
-            draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
-        elif self.stage == 4:
-            game_map = self.active_belief_map()
-            known_cells = len(game_map["grid"]) * len(game_map["grid"][0]) - self.unknown_cells
-            goal_text = str(game_map["goal"]) if self.goal_seen else "Chua biet"
-            draw_text(self.screen, f"Vi tri: ({self.robot[0]}, {self.robot[1]})", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
-            draw_text(self.screen, f"Goal: {goal_text}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 30))
-            draw_text(self.screen, f"O da biet: {known_cells}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 52))
-            draw_text(self.screen, f"Goal co the: {len(self.possible_goals)}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 74))
-            draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
-        elif self.stage == 5:
-            order_text = " -> ".join(self.csp_order) if self.csp_order else "Chua co"
-            draw_text(self.screen, f"Vi tri: ({self.robot[0]}, {self.robot[1]})", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 8))
-            draw_text(self.screen, f"Thu tu: {order_text}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 30))
-            draw_text(self.screen, f"Da giao: {len(self.delivered)}/{len(CSP_MAP['delivery'])}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 52))
-            draw_text(self.screen, f"Duong di: {max(0, len(self.path) - 1)} buoc", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 74))
-            draw_text(self.screen, f"Ket qua: {self.result_message}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 96))
+            draw_text(self.screen, f"Pin da tieu: {self.energy_used}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 82))
         else:
-            status = [
-                f"Vi tri: ({self.robot[0]}, {self.robot[1]})",
-                f"Duong da di: {max(0, len(self.path) - 1)} buoc",
-                f"Da giao: {len(self.delivered)}/{len(self.current_map['delivery'])}",
-                f"Ket qua: {self.result_message}",
-            ]
-            for i, line in enumerate(status):
-                draw_text(self.screen, line, FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 12 + i * 22))
+            draw_text(self.screen, f"Thoi gian chay: {self.algorithm_time * 1000:.2f} ms", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 28))
+            draw_text(self.screen, f"Node da xet: {self.nodes_checked}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 58))
 
         if self.stage != 5:
-            path_box = pygame.Rect(panel.x + 24, panel.y + 422, panel.w - 48, 58)
+            path_box = pygame.Rect(panel.x + 24, panel.y + 448, panel.w - 48, 58)
             pygame.draw.rect(self.screen, COLORS["panel_2"], path_box, border_radius=10)
             pygame.draw.rect(self.screen, (80, 95, 120), path_box, 1, border_radius=10)
             recent = self.path[-4:]
@@ -1121,21 +1348,43 @@ class Game:
             for i, line in enumerate(wrap_text(recent_text, FONT_SM, path_box.w - 20)[:2]):
                 draw_text(self.screen, line, FONT_SM, COLORS["text"], (path_box.x + 10, path_box.y + 28 + i * 18))
 
-        delivery_y = panel.y + 422 if self.stage == 5 else panel.y + 488
-        delivery_h = 140 if self.stage == 5 else 56
+        if self.stage == 5:
+            delivery_y = panel.y + 448
+            delivery_h = 172
+        else:
+            delivery_y = panel.y + 522
+            delivery_h = 96
         delivery_box = pygame.Rect(panel.x + 24, delivery_y, panel.w - 48, delivery_h)
         pygame.draw.rect(self.screen, COLORS["panel_2"], delivery_box, border_radius=10)
         pygame.draw.rect(self.screen, (80, 95, 120), delivery_box, 1, border_radius=10)
+
+        def draw_delivery_badges(deliveries, delivered_set, start_y):
+            count = len(deliveries)
+            gap = 68 if count >= 5 else 86
+            for i, (label, pos, kind) in enumerate(deliveries):
+                x = delivery_box.x + 10 + i * gap
+                y = start_y
+                color = ITEM_COLORS.get(kind, COLORS["cyan"])
+                fill = color if label in delivered_set else COLORS["panel"]
+                pygame.draw.rect(self.screen, fill, (x, y, 28, 22), border_radius=6)
+                pygame.draw.rect(self.screen, color, (x, y, 28, 22), 2, border_radius=6)
+                draw_center(self.screen, label, FONT_BADGE, COLORS["text"], pygame.Rect(x, y, 28, 22))
+                if label in delivered_set:
+                    pygame.draw.line(self.screen, COLORS["green"], (x + 5, y + 11), (x + 12, y + 18), 2)
+                    pygame.draw.line(self.screen, COLORS["green"], (x + 12, y + 18), (x + 25, y + 4), 2)
+
         if self.stage == 3:
-            draw_text(self.screen, "Muc tieu local:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
-            draw_text(self.screen, "G: Giao chip khan cap", FONT_XS, COLORS["text"], (delivery_box.x + 10, delivery_box.y + 30))
-            draw_text(self.screen, "Hill chi di khi Manhattan giam", FONT_XS, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 44))
+            delivered = {"G"} if self.result_message == "Hoan thanh" else set()
+            draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
+            draw_delivery_badges([("G", LOCAL_MAP["goal"], "core")], delivered, delivery_box.y + 34)
         elif self.stage == 4:
-            draw_text(self.screen, "Belief state:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
-            draw_text(self.screen, "known_map + possible_goals", FONT_XS, COLORS["text"], (delivery_box.x + 10, delivery_box.y + 30))
-            draw_text(self.screen, "? = vi tri chua bi loai", FONT_XS, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 44))
+            delivered = {"G"} if self.result_message == "Hoan thanh" else set()
+            draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
+            draw_delivery_badges([("G", self.active_belief_map()["goal"], "core")], delivered, delivery_box.y + 34)
         elif self.stage == 5:
-            draw_text(self.screen, "Rang buoc:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 5))
+            draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
+            draw_delivery_badges(CSP_MAP["delivery"], self.delivered, delivery_box.y + 34)
+            draw_text(self.screen, "Rang buoc:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 68))
             for i, (left, rule, right, text) in enumerate(CSP_MAP["constraints"]):
                 if rule == "before":
                     line = f"{left} truoc {right}"
@@ -1143,22 +1392,17 @@ class Game:
                     line = f"{left} khong cuoi"
                 else:
                     line = f"{left} khong dau"
-                draw_text(self.screen, line, FONT_XS, COLORS["text"], (delivery_box.x + 12, delivery_box.y + 25 + i * 13))
+                draw_text(self.screen, line, FONT_XS, COLORS["text"], (delivery_box.x + 12, delivery_box.y + 88 + i * 13))
+        elif self.stage == 6:
+            draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
+            draw_delivery_badges(BOSS_MAP["delivery"], self.boss_delivered, delivery_box.y + 34)
+            draw_text(self.screen, "Di vao vung do cua boss la thua", FONT_XS, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 78))
         else:
             draw_text(self.screen, "Hang can giao:", FONT_SM, COLORS["muted"], (delivery_box.x + 10, delivery_box.y + 7))
-
-            for i, (label, pos, kind) in enumerate(self.current_map["delivery"]):
-                x = delivery_box.x + 10 + (i % 2) * 118
-                y = delivery_box.y + 26 + (i // 2) * 15
-                color = ITEM_COLORS.get(kind, COLORS["cyan"])
-                name = ITEM_NAMES.get(kind, kind)
-                if label in self.delivered:
-                    name = name + " OK"
-                pygame.draw.rect(self.screen, color, (x, y + 3, 9, 9), border_radius=2)
-                draw_text(self.screen, f"{label}: {name}", FONT_XS, COLORS["text"], (x + 14, y))
+            draw_delivery_badges(self.current_map["delivery"], self.delivered, delivery_box.y + 34)
 
         if self.stage == 5:
-            log_box = pygame.Rect(panel.x + 24, panel.y + 570, panel.w - 48, 48)
+            log_box = pygame.Rect(panel.x + 24, panel.bottom - 70, panel.w - 48, 48)
         else:
             log_box = pygame.Rect(panel.x + 24, panel.bottom - 78, panel.w - 48, 58)
         pygame.draw.rect(self.screen, COLORS["panel_2"], log_box, border_radius=10)
