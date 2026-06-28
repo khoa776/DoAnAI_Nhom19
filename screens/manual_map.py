@@ -444,31 +444,25 @@ class Game:
         if self.stage == 1:
             self.stage = 2
             self.algorithm = "GREEDY"
-            message = "Da chuyen sang man 2: co pin va o ton 2 pin."
         elif self.stage == 2:
             self.stage = 3
             self.algorithm = "HILL"
-            message = "Da chuyen sang man 3: local search voi Manhattan."
         elif self.stage == 3:
             self.stage = 4
             self.algorithm = "BIET GOAL"
-            message = "Da chuyen sang man 4: belief state trong moi truong thay mot phan."
         elif self.stage == 4:
             self.stage = 5
             self.algorithm = "BACKTRACK"
-            message = "Da chuyen sang man 5: CSP voi Backtracking."
         elif self.stage == 5:
             self.stage = 6
             self.algorithm = "MINIMAX"
-            message = "Da chuyen sang man 6: giao hang ne boss."
         else:
             self.stage = 1
             self.algorithm = "BFS"
-            message = "Da quay ve man 1: BFS/DFS khong dung pin."
 
         self.make_buttons()
         self.reset_game()
-        self.message = message
+        self.message = ""
 
     def active_chargers(self):
         if self.stage == 6:
@@ -766,14 +760,30 @@ class Game:
 
     def draw_stars(self):
         stars = [
-            (1018, 58, 2),
-            (1228, 44, 1),
             (1320, 760, 2),
             (1008, 715, 1),
             (90, 748, 1),
             (344, 744, 2),
             (930, 710, 1),
             (1360, 238, 1),
+            (1160, 706, 1),
+            (690, 742, 2),
+            (1464, 612, 1),
+            (1214, 322, 2),
+            (80, 182, 1),
+            (204, 148, 2),
+            (430, 114, 1),
+            (620, 166, 1),
+            (884, 176, 2),
+            (1044, 232, 1),
+            (1390, 164, 1),
+            (1438, 394, 2),
+            (1266, 544, 1),
+            (1110, 610, 2),
+            (772, 676, 1),
+            (510, 706, 1),
+            (190, 624, 2),
+            (58, 512, 1),
         ]
         for x, y, size in stars:
             color = (214, 234, 255) if size == 2 else (128, 158, 190)
@@ -786,25 +796,25 @@ class Game:
         title_x = 54
         note_x = 56
         if self.stage == 1:
-            title = "Man 1 - Tim Kiem Khong Thong Tin"
-            note = "BFS/DFS giao hang tren map khong co chi phi va khong dung pin"
+            title = "LEVEL 1"
+            note = "Giao tat ca cac mon hang !"
         elif self.stage == 2:
-            title = "Man 2 - Tuyen Duong Nang Luong"
-            note = "Map co o ton 2 pin, tram sac va thanh pin cho Greedy/A*"
+            title = "LEVEL 2"
+            note = "Giao hang, co pin va tram sac !"
         elif self.stage == 3:
-            title = "Man 3 - Bay Cuc Bo"
-            note = "Hill Climbing dung o cuc tri cuc bo, Annealing chap nhan buoc xau de thoat"
+            title = "LEVEL 3"
+            note = "Giao hang qua me cung !"
             title_x, _ = local_grid_to_screen(0, 0)
             note_x = title_x + 2
         elif self.stage == 4:
-            title = "Man 4 - Belief State"
-            note = "Biet goal hoac mu goal, robot chi thay duoc vung 3x3 quanh minh"
+            title = "LEVEL 4"
+            note = "Giao hang, moi truong mat tin hieu !"
         elif self.stage == 5:
-            title = "Man 5 - Rang Buoc CSP"
-            note = "Backtracking tim thu tu giao hang hop le truoc khi robot di chuyen"
+            title = "LEVEL 5"
+            note = "Giao hang theo dung thu tu !"
         else:
-            title = "Man 6 - Giao Hang Ne Boss"
-            note = "Giao du 4 mon theo thu tu bat ky va tranh vung nguy hiem 3x3 cua boss"
+            title = "LEVEL 6"
+            note = "Giao hang, tranh khoi ke dich !"
         draw_text(self.screen, title, FONT_LG, COLORS["text"], (title_x, 28))
         draw_text(self.screen, note, FONT, COLORS["muted"], (note_x, 66))
 
@@ -1127,6 +1137,7 @@ class Game:
         pygame.draw.line(self.screen, (78, 15, 24), p1, p2, 9)
         pygame.draw.line(self.screen, (235, 64, 83), p1, p2, 5)
         pygame.draw.line(self.screen, (255, 199, 120), p1, p2, 2)
+
         pygame.draw.circle(self.screen, (255, 199, 120), p1, 5)
         pygame.draw.circle(self.screen, (255, 199, 120), p2, 5)
 
@@ -1289,16 +1300,7 @@ class Game:
         pygame.draw.rect(self.screen, COLORS["panel"], panel, border_radius=14)
         pygame.draw.rect(self.screen, (80, 95, 120), panel, 2, border_radius=14)
         draw_text(self.screen, "Bang dieu khien", FONT_MD, COLORS["text"], (panel.x + 24, panel.y + 24))
-        if self.stage == 3:
-            map_line = f"Man 3 | {LOCAL_MAP['name']}"
-        elif self.stage == 4:
-            map_line = f"Man 4 | {self.active_belief_map()['name']}"
-        elif self.stage == 5:
-            map_line = f"Man 5 | {CSP_MAP['name']}"
-        elif self.stage == 6:
-            map_line = f"Man 6 | {BOSS_MAP['name']}"
-        else:
-            map_line = f"Man {self.stage} | Map {self.map_index + 1}/{map_count()} - {self.current_map['name']}"
+        map_line = f"LEVEL {self.stage}"
         draw_text(self.screen, map_line, FONT_SM, COLORS["muted"], (panel.x + 24, panel.y + 58))
 
         info = [
