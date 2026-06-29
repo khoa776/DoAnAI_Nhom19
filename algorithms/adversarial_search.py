@@ -75,7 +75,7 @@ def evaluate(game_map, robot, boss, delivered):
 
     score = 0
     score += len(delivered) * 1500
-    score -= nearest_delivery_distance(game_map, robot, delivered) * 45
+    score -= nearest_delivery_distance(game_map, robot, delivered) * 60
     score += manhattan(robot, boss) * 2
 
     if boss_near == 2:
@@ -86,7 +86,7 @@ def evaluate(game_map, robot, boss, delivered):
     return score
 
 
-def minimax(game_map, robot, boss, delivered, depth, robot_turn, robot_steps_left=1, boss_speed=2):
+def minimax(game_map, robot, boss, delivered, depth, robot_turn, robot_steps_left=1, robot_steps_per_boss_turn=2):
     nodes = 1
 
     if depth == 0:
@@ -100,9 +100,9 @@ def minimax(game_map, robot, boss, delivered, depth, robot_turn, robot_steps_lef
         for move in get_moves(game_map, robot):
             new_delivered = update_delivered(game_map, move, delivered)
             if robot_steps_left > 1:
-                score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, True, robot_steps_left - 1, boss_speed)
+                score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, True, robot_steps_left - 1, robot_steps_per_boss_turn)
             else:
-                score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, False, boss_speed, boss_speed)
+                score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, False, robot_steps_per_boss_turn, robot_steps_per_boss_turn)
             nodes += child_nodes
             if score > best_score:
                 best_score = score
@@ -110,7 +110,7 @@ def minimax(game_map, robot, boss, delivered, depth, robot_turn, robot_steps_lef
 
     best_score = 999999
     for move in get_moves(game_map, boss):
-        score, child_nodes = minimax(game_map, robot, move, delivered, depth - 1, True, boss_speed, boss_speed)
+        score, child_nodes = minimax(game_map, robot, move, delivered, depth - 1, True, robot_steps_per_boss_turn, robot_steps_per_boss_turn)
         nodes += child_nodes
         if score < best_score:
             best_score = score
@@ -118,7 +118,7 @@ def minimax(game_map, robot, boss, delivered, depth, robot_turn, robot_steps_lef
     return best_score, nodes
 
 
-def minimax_robot_move(game_map, robot, boss, delivered, depth, recent_path=None, boss_speed=2):
+def minimax_robot_move(game_map, robot, boss, delivered, depth, recent_path=None, robot_steps_per_boss_turn=2):
     best_move = robot
     best_score = -999999
     nodes = 0
@@ -127,18 +127,11 @@ def minimax_robot_move(game_map, robot, boss, delivered, depth, recent_path=None
 
     for move in get_moves(game_map, robot):
         new_delivered = update_delivered(game_map, move, delivered)
-        if boss_speed > 1:
-            score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, True, boss_speed - 1, boss_speed)
+        if robot_steps_per_boss_turn > 1:
+            score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, True, robot_steps_per_boss_turn - 1, robot_steps_per_boss_turn)
         else:
-            score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, False, boss_speed, boss_speed)
+            score, child_nodes = minimax(game_map, move, boss, new_delivered, depth - 1, False, robot_steps_per_boss_turn, robot_steps_per_boss_turn)
         nodes += child_nodes
-
-        # Heuristic phu de robot bot di vong khi cac diem Minimax gan nhau.
-        if len(new_delivered) < len(game_map["delivery"]):
-            score -= nearest_delivery_distance(game_map, move, new_delivered) * 10
-
-        if len(new_delivered) > len(delivered):
-            score += 900
 
         if move in recent_path and new_delivered == delivered:
             score -= 120
@@ -150,7 +143,7 @@ def minimax_robot_move(game_map, robot, boss, delivered, depth, recent_path=None
     return best_move, nodes
 
 
-def alpha_beta(game_map, robot, boss, delivered, depth, robot_turn, alpha, beta, robot_steps_left=1, boss_speed=2):
+def alpha_beta(game_map, robot, boss, delivered, depth, robot_turn, alpha, beta, robot_steps_left=1, robot_steps_per_boss_turn=2):
     nodes = 1
 
     if depth == 0:
@@ -164,9 +157,9 @@ def alpha_beta(game_map, robot, boss, delivered, depth, robot_turn, alpha, beta,
         for move in get_moves(game_map, robot):
             new_delivered = update_delivered(game_map, move, delivered)
             if robot_steps_left > 1:
-                score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, True, alpha, beta, robot_steps_left - 1, boss_speed)
+                score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, True, alpha, beta, robot_steps_left - 1, robot_steps_per_boss_turn)
             else:
-                score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, False, alpha, beta, boss_speed, boss_speed)
+                score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, False, alpha, beta, robot_steps_per_boss_turn, robot_steps_per_boss_turn)
             nodes += child_nodes
 
             if score > best_score:
@@ -180,7 +173,7 @@ def alpha_beta(game_map, robot, boss, delivered, depth, robot_turn, alpha, beta,
 
     best_score = 999999
     for move in get_moves(game_map, boss):
-        score, child_nodes = alpha_beta(game_map, robot, move, delivered, depth - 1, True, alpha, beta, boss_speed, boss_speed)
+        score, child_nodes = alpha_beta(game_map, robot, move, delivered, depth - 1, True, alpha, beta, robot_steps_per_boss_turn, robot_steps_per_boss_turn)
         nodes += child_nodes
 
         if score < best_score:
@@ -193,7 +186,7 @@ def alpha_beta(game_map, robot, boss, delivered, depth, robot_turn, alpha, beta,
     return best_score, nodes
 
 
-def alpha_beta_robot_move(game_map, robot, boss, delivered, depth, recent_path=None, boss_speed=2):
+def alpha_beta_robot_move(game_map, robot, boss, delivered, depth, recent_path=None, robot_steps_per_boss_turn=2):
     best_move = robot
     best_score = -999999
     nodes = 0
@@ -204,17 +197,11 @@ def alpha_beta_robot_move(game_map, robot, boss, delivered, depth, recent_path=N
 
     for move in get_moves(game_map, robot):
         new_delivered = update_delivered(game_map, move, delivered)
-        if boss_speed > 1:
-            score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, True, alpha, beta, boss_speed - 1, boss_speed)
+        if robot_steps_per_boss_turn > 1:
+            score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, True, alpha, beta, robot_steps_per_boss_turn - 1, robot_steps_per_boss_turn)
         else:
-            score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, False, alpha, beta, boss_speed, boss_speed)
+            score, child_nodes = alpha_beta(game_map, move, boss, new_delivered, depth - 1, False, alpha, beta, robot_steps_per_boss_turn, robot_steps_per_boss_turn)
         nodes += child_nodes
-
-        if len(new_delivered) < len(game_map["delivery"]):
-            score -= nearest_delivery_distance(game_map, move, new_delivered) * 10
-
-        if len(new_delivered) > len(delivered):
-            score += 900
 
         if move in recent_path and new_delivered == delivered:
             score -= 120
@@ -246,7 +233,7 @@ def make_adversarial_plan(game_map, algorithm="MINIMAX", depth=3, max_turns=90):
     boss = tuple(game_map["boss"])
     delivered = tuple()
     nodes = 0
-    boss_speed = 2
+    robot_steps_per_boss_turn = 2
 
     robot_path = [robot]
     boss_path = [boss]
@@ -262,9 +249,9 @@ def make_adversarial_plan(game_map, algorithm="MINIMAX", depth=3, max_turns=90):
         recent_path = robot_path[-8:]
 
         if algorithm == "ALPHA-BETA":
-            robot, new_nodes = alpha_beta_robot_move(game_map, robot, boss, delivered, depth, recent_path, boss_speed)
+            robot, new_nodes = alpha_beta_robot_move(game_map, robot, boss, delivered, depth, recent_path, robot_steps_per_boss_turn)
         else:
-            robot, new_nodes = minimax_robot_move(game_map, robot, boss, delivered, depth, recent_path, boss_speed)
+            robot, new_nodes = minimax_robot_move(game_map, robot, boss, delivered, depth, recent_path, robot_steps_per_boss_turn)
         nodes += new_nodes
         delivered = update_delivered(game_map, robot, delivered)
         robot_path.append(robot)
@@ -274,8 +261,8 @@ def make_adversarial_plan(game_map, algorithm="MINIMAX", depth=3, max_turns=90):
             delivered_path.append(delivered)
             return robot_path, boss_path, delivered_path, nodes, True, "Hoan thanh"
 
-        # Robot di boss_speed buoc thi boss moi di 1 buoc.
-        if turn % boss_speed == boss_speed - 1:
+        # Robot di du so buoc quy dinh thi boss moi di 1 buoc.
+        if turn % robot_steps_per_boss_turn == robot_steps_per_boss_turn - 1:
             boss = boss_best_move(game_map, robot, boss, delivered)
 
         boss_path.append(boss)
