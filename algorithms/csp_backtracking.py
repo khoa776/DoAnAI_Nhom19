@@ -53,10 +53,7 @@ def backtracking_order(csp_map):
         if len(assignment) == len(labels):
             return assignment
 
-        domain = []
-        for label in labels:
-            if label not in assignment:
-                domain.append(label)
+        domain = list(labels)
 
         random.shuffle(domain)
 
