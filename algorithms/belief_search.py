@@ -1,7 +1,12 @@
 from collections import deque
 
 
-def make_known_map(game_map, know_goal=True):
+# Thu tu huong di dung chung cho ca BFS va DFS:
+# trai, phai, len, xuong.
+MOVE_ORDER = [(0, -1), (0, 1), (-1, 0), (1, 0)]
+
+
+def make_known_map(game_map, know_goal=False):
     grid = game_map["grid"]
     known = []
 
@@ -32,14 +37,6 @@ def in_bounds(game_map, row, col):
     return 0 <= row < len(grid) and 0 <= col < len(grid[0])
 
 
-def is_real_walkable(game_map, row, col):
-    if not in_bounds(game_map, row, col):
-        return False
-
-    tile = game_map["grid"][row][col]
-    return tile != "W" and tile != "X" and tile != "."
-
-
 def is_known_walkable(known_map, row, col):
     if row < 0 or row >= len(known_map):
         return False
@@ -49,7 +46,7 @@ def is_known_walkable(known_map, row, col):
     return known_map[row][col] == "F" or known_map[row][col] == "G"
 
 
-def reveal_area(game_map, known_map, pos, radius=1, know_goal=True):
+def reveal_area(game_map, known_map, pos, radius=1, know_goal=False):
     row, col = pos
     count = 0
     goal = game_map["goal"]
@@ -68,7 +65,7 @@ def reveal_area(game_map, known_map, pos, radius=1, know_goal=True):
                     known_map[r][c] = game_map["grid"][r][c]
 
     if know_goal:
-        goal_row, goal_col = game_map["goal"]
+        goal_row, goal_col = goal
         known_map[goal_row][goal_col] = "G"
         found_goal = True
 
@@ -95,6 +92,21 @@ def update_possible_goals(game_map, known_map, possible_goals):
     return False
 
 
+def is_frontier_cell(known_map, row, col):
+    if not is_known_walkable(known_map, row, col):
+        return False
+
+    for dr, dc in MOVE_ORDER:
+        nr = row + dr
+        nc = col + dc
+
+        if 0 <= nr < len(known_map) and 0 <= nc < len(known_map[0]):
+            if known_map[nr][nc] == "?":
+                return True
+
+    return False
+
+
 def bfs_on_known_map(known_map, start, goal):
     frontier = deque()
     frontier.append((start, [start]))
@@ -112,14 +124,12 @@ def bfs_on_known_map(known_map, start, goal):
         if current == goal:
             return path, nodes
 
-        row, col = current
-        moves = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-
         frontier_positions = []
         for item in frontier:
             frontier_positions.append(item[0])
 
-        for dr, dc in moves:
+        row, col = current
+        for dr, dc in MOVE_ORDER:
             nr = row + dr
             nc = col + dc
             new_pos = (nr, nc)
@@ -133,23 +143,45 @@ def bfs_on_known_map(known_map, start, goal):
     return None, nodes
 
 
-def is_frontier_cell(known_map, row, col):
-    if not is_known_walkable(known_map, row, col):
-        return False
+def dfs_on_known_map(known_map, start, goal):
+    frontier = []
+    frontier.append((start, [start]))
+    visited = set()
+    nodes = 0
 
-    moves = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-    for dr, dc in moves:
-        nr = row + dr
-        nc = col + dc
+    while frontier:
+        current, path = frontier.pop()
 
-        if 0 <= nr < len(known_map) and 0 <= nc < len(known_map[0]):
-            if known_map[nr][nc] == "?":
-                return True
+        if current in visited:
+            continue
 
-    return False
+        visited.add(current)
+
+        if current == goal:
+            return path, nodes
+
+        frontier_positions = []
+        for item in frontier:
+            frontier_positions.append(item[0])
+
+        row, col = current
+        # DFS lay phan tu cuoi ra truoc, nen them nguoc lai de thu tu thuc te
+        # van la trai, phai, len, xuong.
+        for dr, dc in reversed(MOVE_ORDER):
+            nr = row + dr
+            nc = col + dc
+            new_pos = (nr, nc)
+
+            if is_known_walkable(known_map, nr, nc):
+                nodes += 1
+                if new_pos not in visited and new_pos not in frontier_positions:
+                    frontier.append((new_pos, path + [new_pos]))
+                    frontier_positions.append(new_pos)
+
+    return None, nodes
 
 
-def find_nearest_frontier(known_map, start):
+def find_frontier_bfs(known_map, start):
     frontier = deque()
     frontier.append((start, [start]))
     visited = set()
@@ -167,12 +199,11 @@ def find_nearest_frontier(known_map, start):
         if is_frontier_cell(known_map, row, col) and current != start:
             return path, nodes
 
-        moves = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         frontier_positions = []
         for item in frontier:
             frontier_positions.append(item[0])
 
-        for dr, dc in moves:
+        for dr, dc in MOVE_ORDER:
             nr = row + dr
             nc = col + dc
             new_pos = (nr, nc)
@@ -186,44 +217,43 @@ def find_nearest_frontier(known_map, start):
     return None, nodes
 
 
-def known_goal_belief_search(game_map, start, max_steps=220):
-    known_map = make_known_map(game_map, True)
-    current = start
-    goal = game_map["goal"]
-    path = [current]
+def find_frontier_dfs(known_map, start):
+    frontier = []
+    frontier.append((start, [start]))
+    visited = set()
     nodes = 0
-    revealed = 0
 
-    reveal_area(game_map, known_map, current, know_goal=True)
+    while frontier:
+        current, path = frontier.pop()
 
-    while current != goal and len(path) < max_steps:
-        goal_path, checked = bfs_on_known_map(known_map, current, goal)
-        nodes += checked
+        if current in visited:
+            continue
 
-        if goal_path:
-            for step in goal_path[1:]:
-                path.append(step)
-                current = step
-                new_cells, found_goal = reveal_area(game_map, known_map, current, know_goal=True)
-                revealed += new_cells
-            return path, nodes, revealed, True
+        visited.add(current)
 
-        frontier_path, checked = find_nearest_frontier(known_map, current)
-        nodes += checked
+        row, col = current
+        if is_frontier_cell(known_map, row, col) and current != start:
+            return path, nodes
 
-        if frontier_path is None:
-            return path, nodes, revealed, False
+        frontier_positions = []
+        for item in frontier:
+            frontier_positions.append(item[0])
 
-        for step in frontier_path[1:]:
-            path.append(step)
-            current = step
-            new_cells, found_goal = reveal_area(game_map, known_map, current, know_goal=True)
-            revealed += new_cells
+        for dr, dc in reversed(MOVE_ORDER):
+            nr = row + dr
+            nc = col + dc
+            new_pos = (nr, nc)
 
-    return path, nodes, revealed, current == goal
+            if is_known_walkable(known_map, nr, nc):
+                nodes += 1
+                if new_pos not in visited and new_pos not in frontier_positions:
+                    frontier.append((new_pos, path + [new_pos]))
+                    frontier_positions.append(new_pos)
+
+    return None, nodes
 
 
-def unknown_goal_belief_search(game_map, start, max_steps=260):
+def unknown_goal_belief_search(game_map, start, max_steps=320, use_dfs=False):
     known_map = make_known_map(game_map, False)
     possible_goals = make_possible_goals(game_map, start)
     current = start
@@ -241,7 +271,10 @@ def unknown_goal_belief_search(game_map, start, max_steps=260):
 
     while current != goal and len(path) < max_steps:
         if goal_seen:
-            goal_path, checked = bfs_on_known_map(known_map, current, goal)
+            if use_dfs:
+                goal_path, checked = dfs_on_known_map(known_map, current, goal)
+            else:
+                goal_path, checked = bfs_on_known_map(known_map, current, goal)
             nodes += checked
 
             if goal_path:
@@ -253,7 +286,10 @@ def unknown_goal_belief_search(game_map, start, max_steps=260):
                     update_possible_goals(game_map, known_map, possible_goals)
                 return path, nodes, revealed, True, len(possible_goals)
 
-        frontier_path, checked = find_nearest_frontier(known_map, current)
+        if use_dfs:
+            frontier_path, checked = find_frontier_dfs(known_map, current)
+        else:
+            frontier_path, checked = find_frontier_bfs(known_map, current)
         nodes += checked
 
         if frontier_path is None:
@@ -275,3 +311,12 @@ def unknown_goal_belief_search(game_map, start, max_steps=260):
                 break
 
     return path, nodes, revealed, current == goal, len(possible_goals)
+
+
+def unknown_goal_dfs_search(game_map, start, max_steps=320):
+    return unknown_goal_belief_search(game_map, start, max_steps, True)
+
+
+def known_goal_belief_search(game_map, start, max_steps=320):
+    # Giu ham nay de cac file cu import khong bi loi.
+    return unknown_goal_belief_search(game_map, start, max_steps, False)[:4]

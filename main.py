@@ -3,5 +3,6 @@ from screens.manual_map import Game
 
 
 if __name__ == "__main__":
-    play_music()
+    # Tam tat nhac nen. Muon bat lai thi bo dau # o dong duoi.
+    # play_music()
     Game().run()

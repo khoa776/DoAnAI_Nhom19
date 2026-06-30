@@ -24,46 +24,63 @@ LOCAL_MAP = {
 }
 
 BELIEF_MAP = {
-    "name": "Kho mat tin hieu",
+    "name": "Khu mat tin hieu 1",
     "grid": [
-        "WWWWWWWWWWWWWWWWWWWW",
-        "WFFFFXFFFFXFFFFFXFFW",
-        "WFXFFXFFFFXFFXFFFFFW",
-        "WFXFFFFXXFFFFXFFXFFW",
-        "WFFFFX....XFFFFFXFFW",
-        "WXXFFFFXFFFFXXFFFFFW",
-        "WFFFFXFFFFXFFFFXFFFW",
-        "WFXFFFFXFFFFXFFFFFFW",
-        "WFFXFFFF....FFFFXFFW",
-        "WFFFFFFFFXFFFFXFFFFW",
-        "WWWWWWWWWWWWWWWWWWWW",
+        "WWWWWWWWWWWWW",
+        "WSFFFFFFFFFGW",
+        "WFXFXXFFFFXFW",
+        "WFFFFXFFFFXFW",
+        "WXXFFF.FFFFFW",
+        "WFFFFXFFFFFXW",
+        "WFXFFFFXFFFFW",
+        "WFFFFFFFFFFFW",
+        "WWWWWWWWWWWWW",
     ],
-    "start": [9, 2],
-    "goal": (1, 17),
-    "delivery": [("G", (1, 17), "core")],
+    "start": [1, 1],
+    "goal": (1, 11),
+    "delivery": [("G", (1, 11), "core")],
     "lasers": [],
 }
 
 BELIEF_UNKNOWN_MAP = {
-    "name": "Khu hang bi an",
+    "name": "Khu mat tin hieu 2",
     "grid": [
-        "WWWWWWWWWWWWWWWWWWWW",
-        "WFFFFFXFFFFXFFFFFFFW",
-        "WFXFXXXFFFXFFFFXFFFW",
-        "WFXFFFFXFFFF.XXFFFFW",
-        "WFFFFXFFFFXFFFFFXFFW",
-        "WXXXFFFX....XFFFFFFW",
-        "WFFFFXFFFFXFFXFFFFFW",
-        "WFXFFXFFFFXFFFFXFFFW",
-        "WFFFFX....FFFFXFFFFW",
-        "WFFFFFXFFFFXFFFFXFFW",
-        "WWWWWWWWWWWWWWWWWWWW",
+        "WWWWWWWWWWWWW",
+        "WFFFFFFFFFFFW",
+        "WFXFXXFFFFXFW",
+        "WFFFFXFFFFXFW",
+        "WXXFFF.FFFFFW",
+        "WFFFFXFFFFFXW",
+        "WSXFFFFXFFFGW",
+        "WFFFFFFFFFFFW",
+        "WWWWWWWWWWWWW",
     ],
-    "start": [1, 2],
-    "goal": (9, 17),
-    "delivery": [("G", (9, 17), "core")],
+    "start": [6, 1],
+    "goal": (6, 11),
+    "delivery": [("G", (6, 11), "core")],
     "lasers": [],
 }
+
+BELIEF_EXTRA_MAP = {
+    "name": "Khu mat tin hieu 3",
+    "grid": [
+        "WWWWWWWWWWWWW",
+        "WFFFFFFFFFGFW",
+        "WFXFFFFFXFFFW",
+        "WFFFFXFFFFXFW",
+        "WXXFFFF.FFFFW",
+        "WFFFFFXFXXFFW",
+        "WFXFFFFXFFFFW",
+        "WSFFFFFFFFFFW",
+        "WWWWWWWWWWWWW",
+    ],
+    "start": [7, 1],
+    "goal": (1, 10),
+    "delivery": [("G", (1, 10), "core")],
+    "lasers": [],
+}
+
+BELIEF_MAPS = [BELIEF_MAP, BELIEF_UNKNOWN_MAP, BELIEF_EXTRA_MAP]
 
 CSP_MAP = {
     "name": "Kho trung tam CSP",
@@ -234,6 +251,7 @@ for game_map in MAPS:
 LOCAL_MAP["laser_cells"] = make_laser_cells(LOCAL_MAP["lasers"])
 BELIEF_MAP["laser_cells"] = make_laser_cells(BELIEF_MAP["lasers"])
 BELIEF_UNKNOWN_MAP["laser_cells"] = make_laser_cells(BELIEF_UNKNOWN_MAP["lasers"])
+BELIEF_EXTRA_MAP["laser_cells"] = make_laser_cells(BELIEF_EXTRA_MAP["lasers"])
 CSP_MAP["laser_cells"] = make_laser_cells(CSP_MAP["lasers"])
 BOSS_MAP["laser_cells"] = make_laser_cells(BOSS_MAP["lasers"])
 
@@ -244,6 +262,14 @@ def get_map(index):
 
 def map_count():
     return len(MAPS)
+
+
+def get_belief_map(index):
+    return BELIEF_MAPS[index % len(BELIEF_MAPS)]
+
+
+def belief_map_count():
+    return len(BELIEF_MAPS)
 
 
 def grid_to_screen(row, col):
@@ -281,6 +307,15 @@ def is_laser(game_map, row, col):
 
 def local_grid_to_screen(row, col):
     cols = len(LOCAL_MAP["grid"][0])
+    start_x = (PANEL_X - cols * TILE) // 2
+    return start_x + col * TILE, MAP_Y + row * TILE
+
+
+def belief_grid_to_screen(row, col, game_map=None):
+    if game_map is None:
+        game_map = BELIEF_MAP
+
+    cols = len(game_map["grid"][0])
     start_x = (PANEL_X - cols * TILE) // 2
     return start_x + col * TILE, MAP_Y + row * TILE
 

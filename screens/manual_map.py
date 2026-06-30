@@ -8,7 +8,7 @@ import pygame
 
 from algorithms.astar import astar_search
 from algorithms.adversarial_search import make_alpha_beta_plan, make_minimax_plan
-from algorithms.belief_search import known_goal_belief_search, make_known_map, make_possible_goals, reveal_area, unknown_goal_belief_search, update_possible_goals
+from algorithms.belief_search import make_known_map, make_possible_goals, reveal_area, unknown_goal_belief_search, unknown_goal_dfs_search, update_possible_goals
 from algorithms.bfs import bfs
 from algorithms.csp_backtracking import backtracking_order, forward_checking_order, make_delivery_route
 from algorithms.dfs import dfs
@@ -16,7 +16,7 @@ from algorithms.greedy import greedy_search
 from algorithms.local_search import manhattan, simple_hill_climbing, simulated_annealing
 from algorithms.search_common import get_delivery_at
 from config import COLORS, FPS, HEIGHT, MAP_X, MAP_Y, PANEL_W, PANEL_X, TILE, WIDTH
-from data.maps import BATTERY_MAX_STAGE2, BELIEF_MAP, BELIEF_UNKNOWN_MAP, BOSS_MAP, CSP_MAP, LOCAL_MAP, get_map, grid_to_screen, is_belief_walkable, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
+from data.maps import BATTERY_MAX_STAGE2, BELIEF_MAP, BOSS_MAP, CSP_MAP, LOCAL_MAP, belief_grid_to_screen, belief_map_count, get_belief_map, get_map, grid_to_screen, is_belief_walkable, is_cost2, is_local_walkable, is_walkable, local_grid_to_screen, map_count, tile_cost
 from ui.drawing import draw_center, draw_text, wrap_text
 from ui.sprites import draw_battery_bar, draw_charger
 
@@ -134,9 +134,7 @@ class Game:
         return BATTERY_MAX_STAGE2
 
     def active_belief_map(self):
-        if self.algorithm == "MU GOAL":
-            return BELIEF_UNKNOWN_MAP
-        return BELIEF_MAP
+        return get_belief_map(self.map_index)
 
     def count_unknown_cells(self):
         count = 0
@@ -148,14 +146,10 @@ class Game:
 
     def reset_belief_state(self):
         game_map = self.active_belief_map()
-        know_goal = self.algorithm == "BIET GOAL"
-        self.known_map = make_known_map(game_map, know_goal)
-        if know_goal:
-            self.possible_goals = {game_map["goal"]}
-        else:
-            self.possible_goals = make_possible_goals(game_map, tuple(self.robot))
+        self.known_map = make_known_map(game_map, False)
+        self.possible_goals = make_possible_goals(game_map, tuple(self.robot))
 
-        new_cells, found_goal = reveal_area(game_map, self.known_map, tuple(self.robot), know_goal=know_goal)
+        new_cells, found_goal = reveal_area(game_map, self.known_map, tuple(self.robot), know_goal=False)
         self.revealed_cells = new_cells
         self.goal_seen = found_goal
         if update_possible_goals(game_map, self.known_map, self.possible_goals):
@@ -175,7 +169,7 @@ class Game:
         elif self.stage == 3:
             algorithms = ["HILL", "ANNEAL"]
         elif self.stage == 4:
-            algorithms = ["BIET GOAL", "MU GOAL"]
+            algorithms = ["BFS", "DFS"]
         elif self.stage == 5:
             algorithms = ["BACKTRACK", "FORWARD"]
         else:
@@ -311,11 +305,10 @@ class Game:
             self.reset_belief_state()
 
             start_time = time.perf_counter()
-            if self.algorithm == "MU GOAL":
-                path, nodes, revealed, success, possible_count = unknown_goal_belief_search(game_map, tuple(self.robot))
+            if self.algorithm == "DFS":
+                path, nodes, revealed, success, possible_count = unknown_goal_dfs_search(game_map, tuple(self.robot))
             else:
-                path, nodes, revealed, success = known_goal_belief_search(game_map, tuple(self.robot))
-                possible_count = 1
+                path, nodes, revealed, success, possible_count = unknown_goal_belief_search(game_map, tuple(self.robot))
             self.algorithm_time = time.perf_counter() - start_time
 
             self.nodes_checked = nodes
@@ -424,7 +417,10 @@ class Game:
             return
 
         if self.stage == 4:
-            self.message = "Man 4 doi map bang cach chon BIET GOAL hoac MU GOAL."
+            self.map_index = (self.map_index + 1) % belief_map_count()
+            self.reset_game()
+            game_map = self.active_belief_map()
+            self.message = f"Da doi sang map {self.map_index + 1}: {game_map['name']}."
             return
 
         if self.stage == 5:
@@ -449,7 +445,7 @@ class Game:
             self.algorithm = "HILL"
         elif self.stage == 3:
             self.stage = 4
-            self.algorithm = "BIET GOAL"
+            self.algorithm = "BFS"
         elif self.stage == 4:
             self.stage = 5
             self.algorithm = "BACKTRACK"
@@ -555,8 +551,7 @@ class Game:
                 self.message = f"Robot di chuyen toi o ({row}, {col}), ton {cost} pin."
         elif self.stage == 4:
             game_map = self.active_belief_map()
-            know_goal = self.algorithm == "BIET GOAL"
-            new_cells, found_goal = reveal_area(game_map, self.known_map, (row, col), know_goal=know_goal)
+            new_cells, found_goal = reveal_area(game_map, self.known_map, (row, col), know_goal=False)
             self.revealed_cells += new_cells
             if found_goal:
                 self.goal_seen = True
@@ -809,6 +804,8 @@ class Game:
         elif self.stage == 4:
             title = "LEVEL 4"
             note = "Giao hang, moi truong mat tin hieu !"
+            title_x, _ = belief_grid_to_screen(0, 0, self.active_belief_map())
+            note_x = title_x + 2
         elif self.stage == 5:
             title = "LEVEL 5"
             note = "Giao hang theo dung thu tu !"
@@ -894,7 +891,8 @@ class Game:
         grid = game_map["grid"]
         rows = len(grid)
         cols = len(grid[0])
-        outer = pygame.Rect(MAP_X - 14, MAP_Y - 14, cols * TILE + 28, rows * TILE + 28)
+        start_x, start_y = belief_grid_to_screen(0, 0, game_map)
+        outer = pygame.Rect(start_x - 14, start_y - 14, cols * TILE + 28, rows * TILE + 28)
         pygame.draw.rect(self.screen, (2, 3, 6), outer.move(0, 8), border_radius=6)
         pygame.draw.rect(self.screen, (26, 31, 43), outer, border_radius=6)
         pygame.draw.rect(self.screen, (85, 96, 116), outer, 2, border_radius=6)
@@ -903,7 +901,7 @@ class Game:
 
         for r, row in enumerate(grid):
             for c, tile in enumerate(row):
-                rect = pygame.Rect(*grid_to_screen(r, c), TILE, TILE)
+                rect = pygame.Rect(*belief_grid_to_screen(r, c, game_map), TILE, TILE)
 
                 if tile == "W":
                     self.draw_tile(rect, "W", r, c)
@@ -985,6 +983,8 @@ class Game:
         for index, (r, c) in enumerate(self.path[:-1]):
             if self.stage == 3:
                 x, y = local_grid_to_screen(r, c)
+            elif self.stage == 4:
+                x, y = belief_grid_to_screen(r, c, self.active_belief_map())
             else:
                 x, y = grid_to_screen(r, c)
             center = (x + TILE // 2, y + TILE // 2)
@@ -1168,6 +1168,8 @@ class Game:
         row, col = self.robot
         if self.stage == 3:
             x, y = local_grid_to_screen(row, col)
+        elif self.stage == 4:
+            x, y = belief_grid_to_screen(row, col, self.active_belief_map())
         else:
             x, y = grid_to_screen(row, col)
         cx, cy = x + TILE // 2, y + TILE // 2
@@ -1340,6 +1342,7 @@ class Game:
         else:
             draw_text(self.screen, f"Thoi gian chay: {self.algorithm_time * 1000:.2f} ms", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 28))
             draw_text(self.screen, f"Node da xet: {self.nodes_checked}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 58))
+            draw_text(self.screen, f"So buoc: {self.solution_steps}", FONT_SM, COLORS["text"], (status_box.x + 10, status_box.y + 88))
 
         if self.stage != 5:
             path_box = pygame.Rect(panel.x + 24, panel.y + 448, panel.w - 48, 58)
