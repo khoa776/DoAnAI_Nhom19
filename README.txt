@@ -70,7 +70,6 @@ DoAnAI/
 - `algorithms/csp_backtracking.py`: Backtracking và Forward Checking cho level 5.
 - `algorithms/adversarial_search.py`: Minimax và Alpha-Beta cho level 6.
 
-Một số file backup của `belief_search` được giữ lại để tham khảo phiên bản cũ, nhưng game hiện tại dùng file `algorithms/belief_search.py`.
 
 ## Ký hiệu map thường gặp
 
@@ -92,4 +91,3 @@ Trên bảng điều khiển, game hiển thị các thông tin chính như:
 - Với level 2 có thêm pin và lượng pin đã tiêu thụ.
 - Với level 5 có thêm danh sách ràng buộc.
 
-Các thông tin này dùng để quan sát và so sánh thuật toán trong báo cáo.
