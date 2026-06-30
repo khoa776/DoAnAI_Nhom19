@@ -6,6 +6,7 @@ import time
 
 import pygame
 
+from resource import resource_path
 from algorithms.astar import astar_search
 from algorithms.adversarial_search import make_alpha_beta_plan, make_minimax_plan
 from algorithms.belief_search import make_known_map, make_possible_goals, reveal_area, unknown_goal_belief_search, unknown_goal_dfs_search, update_possible_goals
@@ -119,8 +120,7 @@ class Game:
         self.make_buttons()
 
     def load_boss_image(self):
-        root_folder = os.path.dirname(os.path.dirname(__file__))
-        image_path = os.path.join(root_folder, "assets", "boss_sprite.png")
+        image_path = resource_path("assets/boss_sprite.png")
 
         if not os.path.exists(image_path):
             return None

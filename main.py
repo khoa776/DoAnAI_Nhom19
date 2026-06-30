@@ -4,5 +4,5 @@ from screens.manual_map import Game
 
 if __name__ == "__main__":
     # Tam tat nhac nen. Muon bat lai thi bo dau # o dong duoi.
-    # play_music()
+    play_music()
     Game().run()

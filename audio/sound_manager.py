@@ -1,18 +1,10 @@
-import os
-
 import pygame
-
+from resource import resource_path
 
 MUSIC_FILE = "serhii_kliets-spaceship-arcade-shooter-game-background-soundtrack-318508.mp3"
 
-
 def play_music():
-    root_folder = os.path.dirname(os.path.dirname(__file__))
-    music_path = os.path.join(root_folder, MUSIC_FILE)
-
-    if not os.path.exists(music_path):
-        print("Khong tim thay file nhac nen.")
-        return
+    music_path = resource_path(MUSIC_FILE)
 
     try:
         pygame.mixer.init()
